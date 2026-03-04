@@ -1,0 +1,18 @@
+Running official discovery from SKILL-data.md
+
+============================================================
+🔍 'accessibilité potentielle localisée médecins généralistes commune APL'
+DEBUG text: Found 1 dataset(s) for query: 'accessibilité potentielle localisée médecins généralistes commune APL'
+Page 1 of results:
+
+1. Accessibilité potentielle localisée (APL) aux médecins généralistes par commune
+   ID: 697956ff4ba57932dd986c05
+   Organization: Région Hauts-de-France
+   Tags: , medecin, region, societe, statique
+   Resources: 1
+   URL: https://www.data.gouv.fr/datasets/accessibilite-potentielle-localisee-apl-aux-medecins-generalistes-par-commune
+
+
+============================================================
+🔍 'atlas démographie médicale médecins généralistes département DREES'
+DEBUG text: No datasets found for query: 'atlas démographie médicale médecins généralistes département DREES'

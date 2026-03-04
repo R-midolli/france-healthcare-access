@@ -1,0 +1,21 @@
+# Raw data — large and reproducible via pipeline
+data/raw/
+!data/raw/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Security
+.env
+*.env
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.marimo.db
