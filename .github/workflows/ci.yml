@@ -9,10 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: pip }
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check src/ tests/ app/
-      - run: black --check src/ tests/ app/
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+      - run: uv run ruff check src/ tests/ app/
+      - run: uv run black --check src/ tests/ app/
       # Reduced coverage requirement to ensure green badge for the portfolio demo
-      - run: pytest tests/ -v --cov=src --cov-fail-under=10
+      - run: uv run pytest tests/ -v --cov=src --cov-fail-under=10

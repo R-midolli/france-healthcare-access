@@ -1,0 +1,60 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.4, pytest-8.2.2, pluggy-1.6.0 -- C:\Users\rafae\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\rafae\workspace\france-healthcare-access
+plugins: anyio-4.9.0, cov-5.0.0
+C:\Users\rafae\AppData\Local\Programs\Python\Python312\Lib\site-packages\coverage\control.py:958: CoverageWarning: No data was collected. (no-data-collected); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-no-data-collected
+  self._warn("No data was collected.", slug="no-data-collected")
+collecting ... collected 0 items / 3 errors
+
+=================================== ERRORS ====================================
+__________________ ERROR collecting tests/test_mcp_client.py __________________
+ImportError while importing test module 'C:\Users\rafae\workspace\france-healthcare-access\tests\test_mcp_client.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests\test_mcp_client.py:1: in <module>
+    from src.mcp_client import DataGouvMCP
+E   ModuleNotFoundError: No module named 'src'
+__________________ ERROR collecting tests/test_transform.py ___________________
+ImportError while importing test module 'C:\Users\rafae\workspace\france-healthcare-access\tests\test_transform.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests\test_transform.py:4: in <module>
+    from src.transform import build_communes_enriched, build_departements_summary
+E   ModuleNotFoundError: No module named 'src'
+___________________ ERROR collecting tests/test_validate.py ___________________
+ImportError while importing test module 'C:\Users\rafae\workspace\france-healthcare-access\tests\test_validate.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests\test_validate.py:4: in <module>
+    from src.validate import validate
+E   ModuleNotFoundError: No module named 'src'
+
+---------- coverage: platform win32, python 3.12.4-final-0 -----------
+Name                   Stmts   Miss  Cover   Missing
+----------------------------------------------------
+src\__init__.py            0      0   100%
+src\_test_mcp_sse.py      34     34     0%   2-62
+src\discover_ids.py        5      5     0%   1-6
+src\extract.py            85     85     0%   1-156
+src\mcp_client.py         70     70     0%   1-127
+src\pipeline.py           25     25     0%   1-36
+src\test_extract.py       29     29     0%   1-37
+src\test_sources.py       28     28     0%   2-66
+src\transform.py          50     50     0%   1-141
+src\validate.py           42     42     0%   1-81
+----------------------------------------------------
+TOTAL                    368    368     0%
+
+=========================== short test summary info ===========================
+ERROR tests/test_mcp_client.py
+ERROR tests/test_transform.py
+ERROR tests/test_validate.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 3 errors during collection !!!!!!!!!!!!!!!!!!!
+============================== 3 errors in 1.53s ==============================

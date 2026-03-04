@@ -7,11 +7,18 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
+    steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: pip }
-      - run: pip install -r requirements.txt
-      - run: python src/pipeline.py
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+      - name: Run pipeline
+        run: uv run python src/pipeline.py
       - name: Commit updated Parquets
         run: |
           git config user.name  "github-actions[bot]"
