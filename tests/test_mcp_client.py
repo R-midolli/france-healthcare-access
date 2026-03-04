@@ -1,5 +1,6 @@
-from src.mcp_client import DataGouvMCP
+from src.mcp_client import DataGouvMCP, MCP_URL
 
 def test_mcp_client_init():
     client = DataGouvMCP()
-    assert client.base_url == "https://www.data.gouv.fr/api/1"
+    assert client is not None
+    assert MCP_URL == "https://mcp.data.gouv.fr/mcp"
