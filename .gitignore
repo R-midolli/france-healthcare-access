@@ -19,3 +19,16 @@ Thumbs.db
 .idea/
 .vscode/
 *.marimo.db
+
+# Test & coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Pipeline debug output
+*_output.txt
+discover_output.txt
+pipeline_output.txt
+streamlit_out.txt
+test_out.txt
+test_coverage.txt

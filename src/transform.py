@@ -1,141 +1,214 @@
-import duckdb
+"""
+transform.py — Transform layer (T in ELT).
+
+Reads from raw.* tables, cleans/normalises into staging.*, then aggregates
+and joins into mart.* tables that the dashboard consumes.
+
+Stage 1 — raw → staging (clean, type, validate)
+Stage 2 — staging → mart  (join, aggregate, derive business metrics)
+"""
+
 import pandas as pd
-from pathlib import Path
+from sqlalchemy import text
+
+from db import get_engine, ensure_schemas
 
 
-def build_communes_enriched(raw_dir: Path, processed_dir: Path) -> pd.DataFrame:
-    con = duckdb.connect()
-    processed_dir.mkdir(parents=True, exist_ok=True)
+# ────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ────────────────────────────────────────────────────────────────────────────
 
-    con.execute(f"""
-        CREATE TABLE apl AS
-        SELECT
-            LPAD(CAST(codgeo AS VARCHAR), 5, '0')             AS codgeo,
-            TRY_CAST(
-                REPLACE(CAST(apl_mg AS VARCHAR), ',', '.')
-            AS DOUBLE)                                         AS apl_mg,
-            CAST(dept AS VARCHAR)                             AS dept,
-            CAST(reg  AS VARCHAR)                             AS reg
-        FROM read_csv_auto(
-            '{raw_dir}/apl_communes.csv',
-            dtypes={{'codgeo':'VARCHAR','dept':'VARCHAR','reg':'VARCHAR'}}
+def _find_col(df: pd.DataFrame, keywords: list[str]) -> str | None:
+    """Find first column whose name contains any of the keywords."""
+    for kw in keywords:
+        hits = [c for c in df.columns if kw in c.lower()]
+        if hits:
+            return hits[0]
+    return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# STAGE 1: raw → staging
+# ────────────────────────────────────────────────────────────────────────────
+
+def _stg_communes(engine) -> pd.DataFrame:
+    """raw.apl_by_commune + raw.population_by_commune → staging.stg_communes"""
+    apl_raw = pd.read_sql("SELECT * FROM raw.apl_by_commune", engine)
+    pop_raw = pd.read_sql("SELECT * FROM raw.population_by_commune", engine)
+
+    # --- APL: identify and normalise key columns ---
+    codgeo_col = _find_col(apl_raw, ["codgeo", "code_commune", "com"])
+    apl_col    = _find_col(apl_raw, ["apl_mg", "apl"])
+    dept_col   = _find_col(apl_raw, ["dept", "dep"])
+    reg_col    = _find_col(apl_raw, ["reg"])
+
+    if not codgeo_col or not apl_col:
+        raise ValueError(
+            f"Cannot identify required APL columns. Found: {apl_raw.columns.tolist()}"
         )
-        WHERE TRY_CAST(REPLACE(CAST(apl_mg AS VARCHAR),',','.') AS DOUBLE)
-              IS NOT NULL
-    """)
 
-    con.execute(f"""
-        CREATE TABLE pop AS
-        SELECT
-            LPAD(CAST(codgeo AS VARCHAR), 5, '0') AS codgeo,
-            CAST(population AS INTEGER)            AS population
-        FROM read_csv_auto(
-            '{raw_dir}/population_communes.csv',
-            dtypes={{'codgeo':'VARCHAR'}}
+    apl = apl_raw[[codgeo_col, apl_col]
+                  + ([dept_col] if dept_col else [])
+                  + ([reg_col]  if reg_col  else [])
+                  ].copy()
+    apl.columns = (
+        ["codgeo", "apl_mg"]
+        + (["dept"] if dept_col else [])
+        + (["reg"]  if reg_col  else [])
+    )
+    apl["codgeo"] = apl["codgeo"].astype(str).str.strip().str.zfill(5)
+    apl["apl_mg"] = pd.to_numeric(
+        apl["apl_mg"].astype(str).str.replace(",", "."), errors="coerce"
+    )
+    if "dept" in apl.columns:
+        apl["dept"] = apl["dept"].astype(str).str.strip().str.zfill(2)
+    if "reg" in apl.columns:
+        apl["reg"] = apl["reg"].astype(str).str.strip()
+
+    apl = apl.dropna(subset=["codgeo", "apl_mg"])
+    apl = apl[apl["apl_mg"].between(0, 200)]
+    apl = apl.drop_duplicates(subset=["codgeo"])
+
+    # --- Population: identify and normalise key columns ---
+    codgeo_pop = _find_col(pop_raw, ["codgeo", "com"])
+    pop_col    = _find_col(pop_raw, ["ptot", "population", "pop"])
+
+    if not codgeo_pop or not pop_col:
+        raise ValueError(
+            f"Cannot identify population columns. Found: {pop_raw.columns.tolist()}"
         )
-        WHERE population IS NOT NULL
-          AND TRY_CAST(population AS INTEGER) > 0
-    """)
 
-    df = con.execute("""
-        SELECT
-            a.codgeo,
-            a.dept,
-            a.reg,
-            ROUND(a.apl_mg, 4)      AS apl_mg,
-            p.population,
-            CASE
-                WHEN a.apl_mg < 1.5 THEN 'désert_critique'
-                WHEN a.apl_mg < 2.5 THEN 'sous-doté'
-                WHEN a.apl_mg < 4.0 THEN 'correct'
-                ELSE                     'bien_doté'
-            END                     AS apl_cat,
-            CASE WHEN a.apl_mg < 2.5 THEN 1 ELSE 0 END AS is_desert
-        FROM apl a
-        LEFT JOIN pop p ON a.codgeo = p.codgeo
-        ORDER BY a.dept, a.codgeo
-    """).df()
+    pop = pop_raw[[codgeo_pop, pop_col]].copy()
+    pop.columns = ["codgeo", "population"]
+    pop["codgeo"]     = pop["codgeo"].astype(str).str.strip().str.zfill(5)
+    pop["population"] = pd.to_numeric(pop["population"], errors="coerce")
+    pop = pop.dropna()
+    pop["population"] = pop["population"].astype(int)
+    pop = pop[pop["population"] > 0]
+    pop = pop.groupby("codgeo", as_index=False)["population"].sum()
 
-    assert len(df) > 30_000, f"Communes insuficientes: {len(df)}"
-    assert df["codgeo"].is_unique, \
-        f"codgeo duplicado: {df[df['codgeo'].duplicated()]['codgeo'].head().tolist()}"
-    valid = {"désert_critique", "sous-doté", "correct", "bien_doté"}
-    invalid = set(df["apl_cat"].unique()) - valid
-    assert not invalid, f"APL_cat inválida: {invalid}"
-    assert df["apl_mg"].between(0, 200).all(), \
-        f"APL fora de [0,200]: {df[~df['apl_mg'].between(0,200)]['apl_mg'].describe()}"
+    # Join
+    df = apl.merge(pop, on="codgeo", how="left")
 
-    n = df["is_desert"].sum()
-    print(f"✅ communes_enriched: {len(df):,} communes | "
-          f"{n:,} déserts ({n/len(df)*100:.1f}%) | "
-          f"APL médiane: {df['apl_mg'].median():.2f}")
+    with engine.begin() as conn:
+        df.to_sql("stg_communes", conn, schema="staging", if_exists="replace", index=False)
 
-    df.to_parquet(processed_dir / "communes_enriched.parquet", index=False)
-    con.close()
+    print(f"  ✅ staging.stg_communes: {len(df):,} rows")
     return df
 
 
-def build_departements_summary(raw_dir: Path, processed_dir: Path) -> pd.DataFrame:
-    con = duckdb.connect()
-    con.execute(f"""
-        CREATE TABLE communes AS
-        SELECT * FROM read_parquet('{processed_dir}/communes_enriched.parquet')
-    """)
+def _stg_departments(engine) -> pd.DataFrame:
+    """raw.doctors_by_dept → staging.stg_departments"""
+    rpps_raw = pd.read_sql("SELECT * FROM raw.doctors_by_dept", engine)
 
-    df = con.execute("""
-        SELECT
-            dept,
-            COUNT(*)                                        AS nb_communes,
-            COALESCE(SUM(population), 0)                   AS population_totale,
-            ROUND(MEDIAN(apl_mg), 3)                       AS apl_mediane,
-            MIN(apl_mg)                                    AS apl_min,
-            MAX(apl_mg)                                    AS apl_max,
-            SUM(is_desert)                                 AS nb_communes_desert,
-            ROUND(SUM(is_desert)*100.0/COUNT(*), 2)        AS pct_desert,
-            SUM(CASE WHEN apl_cat='désert_critique' THEN 1 ELSE 0 END)
-                                                           AS nb_desert_critique
-        FROM communes
-        GROUP BY dept
-        ORDER BY pct_desert DESC
-    """).df()
+    dept_col = _find_col(rpps_raw, ["dept", "dep", "code_dep"])
+    med_col  = _find_col(rpps_raw, ["gen", "med", "omni"])
 
-    try:
-        rpps = pd.read_csv(raw_dir / "rpps_departements.csv", dtype=str)
-        print(f"  RPPS colonnes: {rpps.columns.tolist()}")
-        dept_col = next(
-            (c for c in rpps.columns if any(k in c.lower() for k in ["dept","dep","code"])),
-            None
+    if not dept_col or not med_col:
+        raise ValueError(
+            f"Cannot identify RPPS columns. Found: {rpps_raw.columns.tolist()}"
         )
-        med_col = next(
-            (c for c in rpps.columns if any(k in c.lower() for k in ["gen","med","omni"])),
-            None
-        )
-        if dept_col and med_col:
-            slim = rpps[[dept_col, med_col]].copy()
-            slim.columns = ["dept", "nb_medecins"]
-            slim["dept"]        = slim["dept"].astype(str).str.strip().str.zfill(2)
-            slim["nb_medecins"] = pd.to_numeric(slim["nb_medecins"], errors="coerce")
-            df = df.merge(slim, on="dept", how="left")
-            df["med_pour_10k"] = (
-                df["nb_medecins"] / df["population_totale"] * 10_000
-            ).round(2)
-            print(f"  ✅ RPPS joiné (dept={dept_col}, médecins={med_col})")
-        else:
-            print(f"  ⚠️ Colonnes RPPS non reconnues — med_pour_10k absent")
-    except Exception as e:
-        print(f"  ⚠️ RPPS join ignoré: {e}")
 
-    assert 90 <= len(df) <= 110, f"Nb départements anormal: {len(df)}"
+    df = rpps_raw[[dept_col, med_col]].copy()
+    df.columns = ["dept", "nb_medecins"]
+    df["dept"]        = df["dept"].astype(str).str.strip().str.zfill(2)
+    df["nb_medecins"] = pd.to_numeric(df["nb_medecins"], errors="coerce")
+    df = df.dropna()
+    df["nb_medecins"] = df["nb_medecins"].astype(int)
+    df = df.drop_duplicates(subset=["dept"])
 
-    df.to_parquet(processed_dir / "departements_summary.parquet", index=False)
-    print(f"✅ departements_summary: {len(df)} depts | "
-          f"top 3: {df.head(3)['dept'].tolist()}")
-    con.close()
+    with engine.begin() as conn:
+        df.to_sql("stg_departments", conn, schema="staging", if_exists="replace", index=False)
+
+    print(f"  ✅ staging.stg_departments: {len(df)} rows")
     return df
 
 
-def run_transform(raw_dir: Path, processed_dir: Path) -> None:
-    print("\n📦 Transformation DuckDB...")
-    build_communes_enriched(raw_dir, processed_dir)
-    build_departements_summary(raw_dir, processed_dir)
-    print("✅ Transformation terminée\n")
+# ────────────────────────────────────────────────────────────────────────────
+# STAGE 2: staging → mart
+# ────────────────────────────────────────────────────────────────────────────
+
+APL_THRESHOLD = 2.5   # Default medical desert threshold
+
+APL_CATEGORIES = {
+    "critical_desert": (0.0,   1.5),
+    "under_served":    (1.5,   APL_THRESHOLD),
+    "adequate":        (APL_THRESHOLD, 4.0),
+    "well_served":     (4.0,   float("inf")),
+}
+
+
+def _categorise_apl(apl: float) -> str:
+    for cat, (lo, hi) in APL_CATEGORIES.items():
+        if lo <= apl < hi:
+            return cat
+    return "well_served"
+
+
+def _mart_fact_communes(engine) -> pd.DataFrame:
+    """staging.stg_communes → mart.fact_communes"""
+    df = pd.read_sql("SELECT * FROM staging.stg_communes", engine)
+
+    df["apl_category"] = df["apl_mg"].apply(_categorise_apl)
+    df["is_desert"]    = (df["apl_mg"] < APL_THRESHOLD).astype(int)
+
+    with engine.begin() as conn:
+        df.to_sql("fact_communes", conn, schema="mart", if_exists="replace", index=False)
+
+    print(f"  ✅ mart.fact_communes: {len(df):,} rows | "
+          f"{df['is_desert'].sum():,} deserts ({df['is_desert'].mean()*100:.1f}%)")
+    return df
+
+
+def _mart_dim_departments(engine, communes: pd.DataFrame) -> pd.DataFrame:
+    """staging.stg_departments + mart.fact_communes → mart.dim_departments"""
+    docs = pd.read_sql("SELECT * FROM staging.stg_departments", engine)
+
+    agg = (
+        communes.groupby("dept", as_index=False)
+        .agg(
+            nb_communes      = ("codgeo",       "count"),
+            total_population = ("population",   "sum"),
+            apl_median       = ("apl_mg",       "median"),
+            apl_min          = ("apl_mg",       "min"),
+            apl_max          = ("apl_mg",       "max"),
+            nb_desert        = ("is_desert",    "sum"),
+            nb_critical      = ("apl_category", lambda x: (x == "critical_desert").sum()),
+        )
+    )
+    agg["pct_desert"] = (agg["nb_desert"] / agg["nb_communes"] * 100).round(2)
+    agg["apl_median"] = agg["apl_median"].round(3)
+
+    df = agg.merge(docs, on="dept", how="left")
+    df["doctors_per_10k"] = (
+        df["nb_medecins"] / df["total_population"] * 10_000
+    ).round(2)
+
+    df = df.sort_values("pct_desert", ascending=False).reset_index(drop=True)
+
+    with engine.begin() as conn:
+        df.to_sql("dim_departments", conn, schema="mart", if_exists="replace", index=False)
+
+    print(f"  ✅ mart.dim_departments: {len(df)} departments | "
+          f"top 3 worst: {df.head(3)['dept'].tolist()}")
+    return df
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# PUBLIC ENTRY POINT
+# ────────────────────────────────────────────────────────────────────────────
+
+def run_transform() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Execute all transform stages and return (fact_communes, dim_departments)."""
+    engine = get_engine()
+    ensure_schemas(engine)
+
+    print("\n  [Stage 1] raw → staging")
+    communes = _stg_communes(engine)
+    _stg_departments(engine)
+
+    print("\n  [Stage 2] staging → mart")
+    fact = _mart_fact_communes(engine)
+    dims = _mart_dim_departments(engine, fact)
+
+    return fact, dims
