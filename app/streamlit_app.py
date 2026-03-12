@@ -866,7 +866,7 @@ st.markdown("### 🔍 Filtrar dados" if L == "fr" else "### 🔍 Filter data")
 filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.8])
 
 with filter_col1:
-    all_regions_label = "Todas as regiões" if L == "fr" else "All regions"
+    all_regions_label = "Toutes les régions" if L == "fr" else "All regions"
     region_options = dept_reference["region_name"].dropna().drop_duplicates().sort_values().tolist()
     selected_region_names = st.multiselect(
         "Régions" if L == "fr" else "Regions",
@@ -876,7 +876,7 @@ with filter_col1:
     )
 
 with filter_col2:
-    all_departments_label = "Todos os departamentos" if L == "fr" else "All departments"
+    all_departments_label = "Tous les départements" if L == "fr" else "All departments"
     dept_options_df = dept_reference.copy()
     if selected_region_names:
         dept_options_df = dept_options_df[dept_options_df["region_name"].isin(selected_region_names)]
@@ -896,9 +896,9 @@ with filter_col2:
     )
 
 with filter_col3:
-    with st.expander("⚙️ Parâmetros" if L == "fr" else "⚙️ Parameters"):
+    with st.expander("⚙️ Paramètres" if L == "fr" else "⚙️ Parameters"):
         use_custom_threshold = st.checkbox(
-            "Limiar APL" if L == "fr" else "APL threshold",
+            "Seuil APL" if L == "fr" else "APL threshold",
             value=False,
         )
         threshold = 2.5
