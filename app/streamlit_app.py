@@ -27,7 +27,7 @@ st.set_page_config(
     page_title="France Healthcare Access",
     page_icon="🏥",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Custom CSS — Premium dark BI theme ────────────────────────────────────────
@@ -823,56 +823,56 @@ def load_dept_geojson() -> dict | None:
         return None
     return None
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar (Collapsed/Info only) ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
         <div style='padding:8px 0 16px'>
-          <div style='font-size:1.1rem;font-weight:700;color:#f1f5f9'>🏥 Accès aux soins</div>
-          <div style='font-size:0.72rem;color:#94a3b8;margin-top:2px'>France · DREES · INSEE</div>
+          <div style='font-size:1.1rem;font-weight:700;color:#f1f5f9'>🏥 Accès aos cuidados</div>
+          <div style='font-size:0.72rem;color:#94a3b8;margin-top:2px'>França · DREES · INSEE</div>
         </div>
     """, unsafe_allow_html=True)
-
-    L = "fr"
-
     st.divider()
+    st.caption(T["source"]["fr"])
 
-    communes_raw = load_communes()
-    depts_raw    = load_depts()
-    geo_ref = load_dept_geojson()
-    dept_reference = _build_department_reference(communes_raw, geo_ref)
+L = "fr"
 
-    communes_raw = communes_raw.merge(
-        dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
-        on="dept",
-        how="left",
-    )
-    depts_raw = depts_raw.merge(
-        dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
-        on="dept",
-        how="left",
-    )
+# ── Data Loading ──────────────────────────────────────────────────────────────
+communes_raw = load_communes()
+depts_raw    = load_depts()
+geo_ref = load_dept_geojson()
+dept_reference = _build_department_reference(communes_raw, geo_ref)
 
-    all_regions_label = "Toutes les régions" if L == "fr" else "All regions"
-    all_departments_label = "Tous les départements" if L == "fr" else "All departments"
+communes_raw = communes_raw.merge(
+    dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
+    on="dept",
+    how="left",
+)
+depts_raw = depts_raw.merge(
+    dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
+    on="dept",
+    how="left",
+)
 
+# ── Filter Section (Moved to Main) ───────────────────────────────────────────
+st.markdown("### 🔍 Filtrar dados" if L == "fr" else "### 🔍 Filter data")
+filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.8])
+
+with filter_col1:
+    all_regions_label = "Todas as regiões" if L == "fr" else "All regions"
     region_options = dept_reference["region_name"].dropna().drop_duplicates().sort_values().tolist()
     selected_region_names = st.multiselect(
         "Régions" if L == "fr" else "Regions",
         options=region_options,
         default=[],
         placeholder=all_regions_label,
-        help=(
-            "Vous pouvez sélectionner plusieurs régions. Laissez vide pour voir toute la France."
-            if L == "fr"
-            else "You can select multiple regions. Leave empty to view whole France."
-        ),
     )
 
+with filter_col2:
+    all_departments_label = "Todos os departamentos" if L == "fr" else "All departments"
     dept_options_df = dept_reference.copy()
     if selected_region_names:
         dept_options_df = dept_options_df[dept_options_df["region_name"].isin(selected_region_names)]
 
-    # Sort departments numerically by code
     dept_options_df = dept_options_df.copy()
     dept_options_df["_sort_key"] = dept_options_df["dept"].apply(
         lambda d: (0, int(d)) if d.isdigit() else (1, ord(d[0]) * 1000 + ord(d[-1]))
@@ -885,49 +885,22 @@ with st.sidebar:
         options=dept_option_labels,
         default=[],
         placeholder=all_departments_label,
-        help=(
-            "Optionnel : sélectionnez un ou plusieurs départements pour un focus précis."
-            if L == "fr"
-            else "Optional: select one or more departments for a focused view."
-        ),
     )
 
-    st.divider()
-
-    with st.expander("⚙️ Paramètres d'analyse" if L == "fr" else "⚙️ Analysis parameters", expanded=False):
-        st.caption(
-            "Par défaut, le dashboard utilise le seuil DREES de 2.5. Le modifier sert surtout à faire du scénario / benchmark."
-            if L == "fr"
-            else "By default, the dashboard uses the DREES threshold of 2.5. Changing it is mainly useful for scenario analysis / benchmarking."
-        )
+with filter_col3:
+    with st.expander("⚙️ Parâmetros" if L == "fr" else "⚙️ Parameters"):
         use_custom_threshold = st.checkbox(
-            "Personnaliser le seuil APL" if L == "fr" else "Customize APL threshold",
+            "Limiar APL" if L == "fr" else "APL threshold",
             value=False,
-            help=(
-                "APL < seuil = commune comptée comme sous-dotée pour les graphiques comparatifs."
-                if L == "fr"
-                else "APL < threshold = commune counted as under-served in comparative charts."
-            ),
         )
         threshold = 2.5
         if use_custom_threshold:
             threshold = st.slider(
-                "Seuil APL" if L == "fr" else "APL threshold",
+                "APL",
                 min_value=1.5, max_value=4.0, value=2.5, step=0.1,
             )
-            st.info(
-                f"{'Seuil actif' if L == 'fr' else 'Active threshold'} : {threshold:.1f}"
-            )
         else:
-            st.markdown(
-                f"<div style='text-align:center;padding:6px 12px;background:rgba(110,168,255,0.12);border-radius:8px;"
-                f"font-size:0.85rem;font-weight:600;color:#93c5fd;margin:8px 0'>"
-                f"{'Seuil DREES fixe' if L == 'fr' else 'Fixed DREES threshold'} : 2.5</div>",
-                unsafe_allow_html=True,
-            )
-
-    st.divider()
-    st.caption(T["source"][L])
+            st.caption("Fixo DREES: 2.5")
 
 # ── Data filtering + threshold recomputation ──────────────────────────────────
 communes = communes_raw.copy()
