@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ca621786-5977-4b82-9acd-ecb9784f3bf6",
+    "format": "pdf",
+    "title": "RPPS M\u00e9decins - Sources et d\u00e9finitions 2016.pdf",
+    "url": "https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/514_la-demographie-des-medecins-rpps-au-1er-janvier/attachments/rpps_medecins_sources_et_definitions_2016pdf"
+  },
+  {
+    "id": "874a92de-49bc-42f3-9260-dd3f058d826b",
+    "format": "pdf",
+    "title": "RPPS M\u00e9decins - Synth\u00e8se des effectifs au 1er janvier 2016.pdf",
+    "url": "https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/514_la-demographie-des-medecins-rpps-au-1er-janvier/attachments/rpps_medecins_synthese_des_effectifs_au_1er_janvier_2016pdf"
+  },
+  {
+    "id": "58f2b30c-585e-47d9-84c5-756c8c8f440d",
+    "format": "zip",
+    "title": "Les m\u00e9decins - archives anciennes r\u00e9gions.zip",
+    "url": "https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/514_la-demographie-des-medecins-rpps-au-1er-janvier/attachments/les_medecins_archives_anciennes_regions_zip"
+  },
+  {
+    "id": "37dfe550-2d0f-42c4-8b8b-c5144fc00780",
+    "format": "zip",
+    "title": "Les m\u00e9decins - S\u00e9ries longues de 1999 \u00e0 2017 (ADELI et RPPS).zip",
+    "url": "https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/514_la-demographie-des-medecins-rpps-au-1er-janvier/attachments/les_medecins_series_longues_de_1999_a_2017_adeli_et_rpps_zip"
+  }
+]

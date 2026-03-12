@@ -6,18 +6,17 @@ helpers to create the raw / staging / mart schemas on first run.
 """
 
 import os
-from datetime import datetime
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 
+DEFAULT_POSTGRES_URL = "postgresql://healthcare:healthcare@localhost:5433/healthcare"
+
+
 def get_engine() -> Engine:
     """Return a SQLAlchemy engine using POSTGRES_URL (with sensible default)."""
-    url = os.environ.get(
-        "POSTGRES_URL",
-        "postgresql://healthcare:healthcare@localhost:5432/healthcare",
-    )
+    url = os.environ.get("POSTGRES_URL", DEFAULT_POSTGRES_URL)
     return create_engine(url, pool_pre_ping=True)
 
 

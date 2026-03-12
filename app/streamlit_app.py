@@ -9,11 +9,12 @@ import json
 import os
 from pathlib import Path
 
+import httpx
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 try:
     from dotenv import load_dotenv
@@ -33,30 +34,35 @@ st.set_page_config(
 st.markdown("""
 <style>
   /* Import font */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap');
 
   :root {
-    --bg-primary:    #0f1117;
-    --bg-card:       #1a1d27;
-    --bg-card2:      #232637;
-    --accent:        #4f7fff;
-    --accent2:       #7c6af7;
+      --bg-primary:    #08111f;
+      --bg-card:       #101a2b;
+      --bg-card2:      #162338;
+      --accent:        #6ea8ff;
+      --accent2:       #8b7dff;
     --danger:        #ef4444;
     --warning:       #f59e0b;
     --success:       #10b981;
     --info:          #3b82f6;
-    --text-primary:  #f1f5f9;
-    --text-muted:    #94a3b8;
-    --border:        #2d3148;
+      --text-primary:  #f8fafc;
+            --text-muted:    #dbe7f5;
+      --border:        #334155;
   }
 
   html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+        font-family: 'Manrope', sans-serif;
     color: var(--text-primary);
   }
 
   /* App background */
-  .stApp { background: var(--bg-primary); }
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(110,168,255,0.16), transparent 26%),
+            radial-gradient(circle at top right, rgba(139,125,255,0.12), transparent 22%),
+            linear-gradient(180deg, #08111f 0%, #091423 100%);
+    }
   section[data-testid="stSidebar"] {
     background: var(--bg-card);
     border-right: 1px solid var(--border);
@@ -64,13 +70,14 @@ st.markdown("""
 
   /* Header banner */
   .header-banner {
-    background: linear-gradient(135deg, #1a1d27 0%, #232637 50%, #1a1f3a 100%);
+        background: linear-gradient(135deg, rgba(18,26,47,0.98) 0%, rgba(23,33,59,0.98) 50%, rgba(18,24,50,0.98) 100%);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px 36px;
+        border-radius: 18px;
+        padding: 30px 38px;
     margin-bottom: 24px;
     position: relative;
     overflow: hidden;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
   }
   .header-banner::before {
     content: '';
@@ -80,10 +87,11 @@ st.markdown("""
     pointer-events: none;
   }
   .header-title {
-    font-size: 2rem;
+        font-family: 'Cormorant Garamond', serif;
+        font-size: 2.35rem;
     font-weight: 700;
-    letter-spacing: -0.03em;
-    background: linear-gradient(135deg, #e2e8f0 0%, #93c5fd 100%);
+        letter-spacing: -0.02em;
+        background: linear-gradient(135deg, #f8fafc 0%, #c7d2fe 55%, #93c5fd 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -92,14 +100,14 @@ st.markdown("""
   .header-sub {
     font-size: 0.85rem;
     color: var(--text-muted);
-    font-weight: 400;
+        font-weight: 500;
     letter-spacing: 0.01em;
   }
   .badge {
     display: inline-block;
-    background: rgba(79,127,255,0.15);
-    border: 1px solid rgba(79,127,255,0.3);
-    color: #93c5fd;
+        background: rgba(110,168,255,0.18);
+        border: 1px solid rgba(110,168,255,0.35);
+        color: #dbeafe;
     border-radius: 20px;
     padding: 2px 10px;
     font-size: 0.72rem;
@@ -119,11 +127,12 @@ st.markdown("""
   .kpi-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+        border-radius: 14px;
     padding: 18px 20px;
     position: relative;
     overflow: hidden;
-    transition: border-color 0.2s;
+        transition: border-color 0.2s, transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 12px 32px rgba(5, 8, 18, 0.22);
   }
   .kpi-card::after {
     content: '';
@@ -133,10 +142,14 @@ st.markdown("""
     background: var(--accent-color, var(--accent));
     border-radius: 12px 12px 0 0;
   }
-  .kpi-card:hover { border-color: rgba(79,127,255,0.4); }
+    .kpi-card:hover {
+        border-color: rgba(91,140,255,0.48);
+        transform: translateY(-1px);
+        box-shadow: 0 18px 36px rgba(5, 8, 18, 0.28);
+    }
   .kpi-label {
     font-size: 0.72rem;
-    font-weight: 500;
+        font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -160,16 +173,20 @@ st.markdown("""
 
   /* Tab styling */
   button[data-baseweb="tab"] {
-    font-size: 0.85rem !important;
-    font-weight: 500 !important;
+        font-size: 0.9rem !important;
+        font-weight: 700 !important;
     letter-spacing: 0.02em !important;
+        color: #d6e2f2 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--text-primary) !important;
   }
 
   /* Chart containers */
   .chart-container {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+        border-radius: 14px;
     padding: 20px;
     margin-bottom: 16px;
   }
@@ -185,13 +202,265 @@ st.markdown("""
     margin-bottom: 12px;
   }
 
+    .insight-panel {
+        background: linear-gradient(180deg, rgba(16,26,43,0.96) 0%, rgba(12,22,38,0.98) 100%);
+        border: 1px solid rgba(148,163,184,0.22);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 14px 32px rgba(2, 8, 23, 0.24);
+    }
+    .insight-panel h3 {
+        margin: 0 0 12px 0;
+        font-size: 1.35rem;
+        color: #f8fafc;
+    }
+    .insight-list {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .insight-item {
+        background: rgba(37, 99, 235, 0.12);
+        border: 1px solid rgba(96, 165, 250, 0.22);
+        border-radius: 12px;
+        padding: 10px 12px;
+    }
+    .insight-item strong {
+        display: block;
+        font-size: 0.78rem;
+        color: #93c5fd;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .insight-item span {
+        color: #f8fafc;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    .mini-ranking {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+    }
+    .mini-ranking-row {
+        display: grid;
+        grid-template-columns: 42px 1fr auto auto;
+        gap: 10px;
+        align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(148,163,184,0.14);
+        border-radius: 12px;
+        padding: 10px 12px;
+    }
+    .mini-rank-badge {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(59,130,246,0.18);
+        color: #bfdbfe;
+        font-weight: 800;
+        font-size: 0.82rem;
+    }
+    .mini-rank-name {
+        color: #f8fafc;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+    .mini-rank-metric {
+        color: #fca5a5;
+        font-weight: 700;
+        font-size: 0.88rem;
+    }
+    .mini-rank-sub {
+        color: #cbd5e1;
+        font-size: 0.82rem;
+    }
+
+    .compare-panel {
+        background: linear-gradient(180deg, rgba(16,26,43,0.98) 0%, rgba(12,22,38,0.98) 100%);
+        border: 1px solid rgba(148,163,184,0.20);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 14px 32px rgba(2, 8, 23, 0.22);
+        min-height: 500px;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+    .compare-panel-title {
+        color: #f8fafc;
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+    .compare-grid {
+        display: grid;
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .compare-row {
+        display: grid;
+        grid-template-columns: minmax(140px, 1.45fr) minmax(86px, 0.92fr) minmax(72px, 0.72fr) minmax(72px, 0.72fr) minmax(86px, 0.82fr) minmax(88px, 0.88fr);
+        gap: 8px;
+        align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(148,163,184,0.12);
+        border-radius: 12px;
+        padding: 10px 12px;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .compare-row.header {
+        background: rgba(59,130,246,0.12);
+        border-color: rgba(96,165,250,0.18);
+        color: #bfdbfe;
+        font-weight: 700;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .compare-cell {
+        color: #f8fafc;
+        font-size: 0.86rem;
+        font-weight: 500;
+        min-width: 0;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+    .compare-cell.muted {
+        color: #cbd5e1;
+    }
+    .compare-cell.danger {
+        color: #fca5a5;
+        font-weight: 700;
+    }
+
+    .profile-summary-panel {
+        background: linear-gradient(180deg, rgba(16,26,43,0.98) 0%, rgba(12,22,38,0.98) 100%);
+        border: 1px solid rgba(148,163,184,0.20);
+        border-radius: 16px;
+        padding: 14px;
+        box-shadow: 0 14px 32px rgba(2, 8, 23, 0.20);
+    }
+    .profile-summary-title {
+        color: #f8fafc;
+        font-size: 0.98rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .profile-summary-grid {
+        display: grid;
+        gap: 10px;
+    }
+    .profile-summary-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1.2fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr);
+        gap: 10px;
+        align-items: center;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(148,163,184,0.12);
+        border-radius: 12px;
+        padding: 10px 12px;
+    }
+    .profile-summary-row.header {
+        background: rgba(59,130,246,0.12);
+        border-color: rgba(96,165,250,0.18);
+        color: #bfdbfe;
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .profile-summary-cell {
+        color: #f8fafc;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    .profile-summary-cell.muted {
+        color: #cbd5e1;
+    }
+
   /* Sidebar */
   .sidebar-section {
-    background: rgba(255,255,255,0.04);
-    border-radius: 10px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 12px;
     padding: 14px;
     margin-bottom: 12px;
   }
+
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] span,
+    label,
+    .stCaption,
+    [data-testid="stCaptionContainer"] {
+        color: var(--text-primary) !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] label {
+        color: #e2e8f0 !important;
+    }
+
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        color: #bfd0e3 !important;
+    }
+
+    [data-baseweb="select"] > div,
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"] > div {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+        border-color: #94a3b8 !important;
+    }
+
+    .stRadio [role="radiogroup"] label,
+    .stSlider label,
+    .stSelectbox label {
+        font-weight: 700 !important;
+        color: #e2e8f0 !important;
+    }
+
+    .stRadio [role="radiogroup"] label span {
+        color: #f1f5f9 !important;
+        font-size: 0.85rem !important;
+    }
+
+    .stAlert {
+        border: 1px solid var(--border) !important;
+    }
+
+    [role="tooltip"],
+    [data-baseweb="tooltip"] {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28) !important;
+    }
+
+    [role="tooltip"] *,
+    [data-baseweb="tooltip"] * {
+        color: #0f172a !important;
+    }
+
+    [data-testid="stWidgetLabelHelp"] {
+        color: #cbd5e1 !important;
+    }
+
+    .stDataFrame, [data-testid="stTable"] {
+        color: #f8fafc !important;
+    }
+
+    .stPlotlyChart {
+        border-radius: 12px;
+    }
 
   /* Divider */
   hr { border-color: var(--border) !important; }
@@ -219,11 +488,49 @@ st.markdown("""
 
 # ── Paths & DB ───────────────────────────────────────────────────────────────
 RAW_DIR = Path("data/raw")
+PROCESSED_DIR = Path("data/processed")
+DEPT_GEOJSON_URL = (
+    "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/"
+    "departements-version-simplifiee.geojson"
+)
 
 _POSTGRES_URL = os.environ.get(
     "POSTGRES_URL",
-    "postgresql://healthcare:healthcare@localhost:5432/healthcare",
+    "postgresql://healthcare:healthcare@localhost:5433/healthcare",
 )
+
+COMMUNE_CATEGORY_LABELS = {
+    "critical_desert": {"fr": "Désert critique", "en": "Critical desert"},
+    "under_served": {"fr": "Sous-doté", "en": "Under-served"},
+    "adequate": {"fr": "Couverture correcte", "en": "Adequate"},
+    "well_served": {"fr": "Bien couvert", "en": "Well served"},
+}
+CATEGORY_COLORS = {
+    "critical_desert": "#ef4444",
+    "under_served": "#f59e0b",
+    "adequate": "#3b82f6",
+    "well_served": "#10b981",
+}
+REGION_NAMES = {
+    "11": "Île-de-France",
+    "24": "Centre-Val de Loire",
+    "27": "Bourgogne-Franche-Comté",
+    "28": "Normandie",
+    "32": "Hauts-de-France",
+    "44": "Grand Est",
+    "52": "Pays de la Loire",
+    "53": "Bretagne",
+    "75": "Nouvelle-Aquitaine",
+    "76": "Occitanie",
+    "84": "Auvergne-Rhône-Alpes",
+    "93": "Provence-Alpes-Côte d'Azur",
+    "94": "Corse",
+    "01": "Guadeloupe",
+    "02": "Martinique",
+    "03": "Guyane",
+    "04": "La Réunion",
+    "06": "Mayotte",
+}
 
 # ── Translation strings ────────────────────────────────────────────────────────
 T = {
@@ -241,8 +548,8 @@ T = {
     "t2":         {"fr": "📊 Analyse nationale", "en": "📊 National Analysis"},
     "t3":         {"fr": "🏆 Classement",         "en": "🏆 Ranking"},
     "t4":         {"fr": "📋 Fiche département",  "en": "📋 Department Profile"},
-    "source":     {"fr": "Sources : DREES · INSEE RP2021 · data.gouv.fr",
-                   "en": "Sources: DREES · INSEE RP2021 · data.gouv.fr"},
+    "source":     {"fr": "Sources : DREES · INSEE RP2021 · AMELI · france-geojson",
+                   "en": "Sources: DREES · INSEE RP2021 · AMELI · france-geojson"},
     "map_metric": {"fr": "APL médiane par département",     "en": "Median APL by department"},
     "map_pct":    {"fr": "% communes en désert",            "en": "% desert communes"},
     "no_map":     {"fr": "Fichier GeoJSON introuvable. Exécutez d'abord le pipeline.",
@@ -251,15 +558,198 @@ T = {
 
 # ── Plotly layout defaults (dark theme) ───────────────────────────────────────
 DARK_LAYOUT = dict(
-    paper_bgcolor="#1a1d27",
-    plot_bgcolor="#1a1d27",
-    font=dict(family="Inter", color="#f1f5f9", size=12),
-    xaxis=dict(gridcolor="#2d3148", linecolor="#2d3148", zerolinecolor="#2d3148"),
-    yaxis=dict(gridcolor="#2d3148", linecolor="#2d3148", zerolinecolor="#2d3148"),
+    paper_bgcolor="#101a2b",
+    plot_bgcolor="#101a2b",
+    font=dict(family="Manrope", color="#f8fafc", size=13),
+    xaxis=dict(
+        gridcolor="#334155",
+        linecolor="#475569",
+        zerolinecolor="#64748b",
+        tickfont=dict(color="#e2e8f0"),
+        titlefont=dict(color="#f8fafc"),
+    ),
+    yaxis=dict(
+        gridcolor="#334155",
+        linecolor="#475569",
+        zerolinecolor="#64748b",
+        tickfont=dict(color="#e2e8f0"),
+        titlefont=dict(color="#f8fafc"),
+    ),
+    legend=dict(font=dict(color="#f8fafc")),
     margin=dict(t=40, r=20, b=40, l=20),
 )
 COLOR_SCALE  = "RdYlGn_r"      # red=bad (desert), green=good
 COLOR_SCALE2 = [[0,"#ef4444"], [0.5,"#f59e0b"], [1,"#10b981"]]
+
+
+def _categorise_apl(apl: float) -> str:
+    if apl < 1.5:
+        return "critical_desert"
+    if apl < 2.5:
+        return "under_served"
+    if apl < 4.0:
+        return "adequate"
+    return "well_served"
+
+
+def _normalize_communes(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(columns={"apl_cat": "apl_category"}).copy()
+    if "apl_category" in df.columns:
+        df["apl_category"] = df["apl_category"].replace(
+            {
+                "désert_critique": "critical_desert",
+                "sous-doté": "under_served",
+                "correct": "adequate",
+                "bien_doté": "well_served",
+            }
+        )
+    else:
+        df["apl_category"] = df["apl_mg"].apply(_categorise_apl)
+
+    if "dept" not in df.columns:
+        df["dept"] = df["codgeo"].astype(str).str[:2]
+
+    df["dept"] = df["dept"].astype(str).str.strip().str.zfill(2)
+    df["codgeo"] = df["codgeo"].astype(str).str.strip().str.zfill(5)
+    df["apl_mg"] = pd.to_numeric(df["apl_mg"], errors="coerce")
+    df["population"] = pd.to_numeric(df["population"], errors="coerce").fillna(0)
+    df["is_desert"] = (df["apl_mg"] < 2.5).astype(int)
+    return df.dropna(subset=["apl_mg", "codgeo"])
+
+
+def _normalize_departments(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(
+        columns={
+            "apl_mediane": "apl_median",
+            "med_pour_10k": "doctors_per_10k",
+            "population_totale": "total_population",
+            "nb_communes_desert": "nb_desert",
+            "nb_desert_critique": "nb_critical",
+        }
+    ).copy()
+    df["dept"] = df["dept"].astype(str).str.strip().str.zfill(2)
+    numeric_cols = [
+        "apl_median",
+        "apl_min",
+        "apl_max",
+        "pct_desert",
+        "nb_communes",
+        "nb_desert",
+        "nb_critical",
+        "nb_medecins",
+        "doctors_per_10k",
+        "total_population",
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def _load_parquet(name: str) -> pd.DataFrame:
+    path = PROCESSED_DIR / name
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return pd.read_parquet(path)
+
+
+def _format_int(value: float | int) -> str:
+    return f"{int(round(value)):,}"
+
+
+def _format_pct(value: float) -> str:
+    return f"{value:.1f}%"
+
+
+def _apl_status(apl: float, language: str) -> str:
+    if apl < 1.5:
+        return "Très insuffisant" if language == "fr" else "Very low access"
+    if apl < 2.5:
+        return "Sous le seuil" if language == "fr" else "Below threshold"
+    if apl < 4.0:
+        return "Correct" if language == "fr" else "Acceptable"
+    return "Confortable" if language == "fr" else "Comfortable"
+
+
+def _risk_status(pct: float, language: str) -> str:
+    if pct >= 40:
+        return "Alerte élevée" if language == "fr" else "High alert"
+    if pct >= 20:
+        return "Sous surveillance" if language == "fr" else "Watch closely"
+    return "Situation plutôt stable" if language == "fr" else "Relatively stable"
+
+
+def _format_apl_gap(value: float, language: str) -> str:
+    if value >= 0:
+        return f"+{value:.2f} {'au-dessus' if language == 'fr' else 'above'}"
+    return f"{value:.2f} {'sous le seuil' if language == 'fr' else 'below threshold'}"
+
+
+def _format_gap_short(value: float) -> str:
+    return f"{value:+.2f}"
+
+
+def _category_breakdown(frame: pd.DataFrame, language: str) -> pd.DataFrame:
+    order = ["critical_desert", "under_served", "adequate", "well_served"]
+    counts = frame["apl_category"].value_counts().reindex(order, fill_value=0)
+    total = max(int(len(frame)), 1)
+    return pd.DataFrame(
+        {
+            "category": order,
+            "label": [COMMUNE_CATEGORY_LABELS[key][language] for key in order],
+            "count": counts.values,
+            "share": counts.values / total * 100,
+            "color": [CATEGORY_COLORS[key] for key in order],
+        }
+    )
+
+
+def _build_department_view(departments: pd.DataFrame, communes_frame: pd.DataFrame) -> pd.DataFrame:
+    dept_desert_live = (
+        communes_frame.groupby("dept")
+        .agg(
+            nb_desert=("is_desert", "sum"),
+            nb_communes=("is_desert", "count"),
+            pct_desert=("is_desert", lambda x: round(x.mean() * 100, 2)),
+            pop_desert=("population", lambda x: (x * communes_frame.loc[x.index, "is_desert"]).sum()),
+        )
+        .reset_index()
+    )
+    merged = departments.drop(columns=["nb_desert", "pct_desert"], errors="ignore").merge(
+        dept_desert_live,
+        on="dept",
+        how="left",
+    )
+    merged["pop_desert"] = pd.to_numeric(merged["pop_desert"], errors="coerce").fillna(0)
+    return merged.sort_values("pct_desert", ascending=False).reset_index(drop=True)
+
+
+def _build_department_reference(communes_frame: pd.DataFrame, geojson: dict | None) -> pd.DataFrame:
+    name_rows: list[dict[str, str]] = []
+    if geojson and geojson.get("features"):
+        for feature in geojson["features"]:
+            props = feature.get("properties", {})
+            dept = str(props.get("code", "")).strip().zfill(2)
+            if dept:
+                name_rows.append({"dept": dept, "dept_name": props.get("nom", dept)})
+
+    names = pd.DataFrame(name_rows).drop_duplicates(subset=["dept"]) if name_rows else pd.DataFrame(columns=["dept", "dept_name"])
+    region_ref = (
+        communes_frame[["dept", "reg"]]
+        .dropna()
+        .assign(reg=lambda frame: frame["reg"].astype(str).str.strip().str.zfill(2))
+        .drop_duplicates(subset=["dept"])
+        .rename(columns={"reg": "region_code"})
+    )
+    ref = region_ref.merge(names, on="dept", how="left")
+    ref["dept_name"] = ref["dept_name"].fillna(ref["dept"])
+    ref["region_name"] = ref["region_code"].map(REGION_NAMES).fillna(ref["region_code"])
+    ref["dept_label"] = ref["dept"] + " · " + ref["dept_name"]
+    # Sort numerically by dept code (01, 02, ..., 2A, 2B, ..., 97)
+    ref["_sort_key"] = ref["dept"].apply(
+        lambda d: (0, int(d)) if d.isdigit() else (1, ord(d[0]) * 1000 + ord(d[-1]))
+    )
+    return ref.sort_values("_sort_key").drop(columns=["_sort_key"]).reset_index(drop=True)
 
 # ── Data loading — reads exclusively from mart.* in PostgreSQL ────────────────
 @st.cache_resource
@@ -270,22 +760,28 @@ def _get_engine():
 @st.cache_data(ttl=3600)
 def load_communes() -> pd.DataFrame:
     try:
-        return pd.read_sql("SELECT * FROM mart.fact_communes", _get_engine())
+        return _normalize_communes(pd.read_sql("SELECT * FROM mart.fact_communes", _get_engine()))
     except Exception as e:
-        st.error(
-            f"❌ Cannot connect to PostgreSQL: {e}\n\n"
-            "Run `docker compose up -d` then `uv run python src/pipeline.py` first."
-        )
-        st.stop()
+        try:
+            return _normalize_communes(_load_parquet("communes_enriched.parquet"))
+        except Exception:
+            st.error(
+                f"❌ Cannot load commune data from PostgreSQL or local parquet: {e}\n\n"
+                "Start PostgreSQL and run the pipeline, or keep data/processed populated."
+            )
+            st.stop()
 
 
 @st.cache_data(ttl=3600)
 def load_depts() -> pd.DataFrame:
     try:
-        return pd.read_sql("SELECT * FROM mart.dim_departments", _get_engine())
+        return _normalize_departments(pd.read_sql("SELECT * FROM mart.dim_departments", _get_engine()))
     except Exception as e:
-        st.error(f"❌ Cannot read mart.dim_departments: {e}")
-        st.stop()
+        try:
+            return _normalize_departments(_load_parquet("departements_summary.parquet"))
+        except Exception:
+            st.error(f"❌ Cannot load department data from PostgreSQL or local parquet: {e}")
+            st.stop()
 
 
 @st.cache_data(ttl=3600)
@@ -299,51 +795,136 @@ def load_last_refresh() -> str:
         if not result.empty:
             return str(result.iloc[0, 0])[:16]
     except Exception:
-        pass
+        report_path = PROCESSED_DIR / "quality_report.json"
+        if report_path.exists():
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                return report.get("generated_at") or report.get("stats", {}).get("source_date") or "local file"
+            except Exception:
+                pass
     return "unknown"
 
 
 @st.cache_data(ttl=3600)
 def load_dept_geojson() -> dict | None:
     p = RAW_DIR / "departements.geojson"
-    if not p.exists():
+    if p.exists():
+        with open(p, encoding="utf-8") as f:
+            geo = json.load(f)
+        if geo.get("features"):
+            return geo
+    try:
+        response = httpx.get(DEPT_GEOJSON_URL, timeout=20, follow_redirects=True)
+        response.raise_for_status()
+        geo = response.json()
+        if geo.get("features"):
+            return geo
+    except Exception:
         return None
-    with open(p, encoding="utf-8") as f:
-        geo = json.load(f)
-    if not geo.get("features"):
-        return None
-    return geo
+    return None
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
         <div style='padding:8px 0 16px'>
-          <div style='font-size:1.1rem;font-weight:700;color:#f1f5f9'>🏥 Healthcare Access</div>
-          <div style='font-size:0.72rem;color:#64748b;margin-top:2px'>France · DREES · INSEE</div>
+          <div style='font-size:1.1rem;font-weight:700;color:#f1f5f9'>🏥 Accès aux soins</div>
+          <div style='font-size:0.72rem;color:#94a3b8;margin-top:2px'>France · DREES · INSEE</div>
         </div>
     """, unsafe_allow_html=True)
 
-    en = st.toggle("🇬🇧 English", value=False)
-    L  = "en" if en else "fr"
+    L = "fr"
 
     st.divider()
 
     communes_raw = load_communes()
     depts_raw    = load_depts()
+    geo_ref = load_dept_geojson()
+    dept_reference = _build_department_reference(communes_raw, geo_ref)
 
-    dept_list = sorted(communes_raw["dept"].dropna().unique().tolist())
-    selected  = st.multiselect(
-        T["f_dept"][L], options=dept_list, default=[],
-        placeholder="Tous" if L == "fr" else "All",
+    communes_raw = communes_raw.merge(
+        dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
+        on="dept",
+        how="left",
+    )
+    depts_raw = depts_raw.merge(
+        dept_reference[["dept", "dept_name", "dept_label", "region_code", "region_name"]],
+        on="dept",
+        how="left",
+    )
+
+    all_regions_label = "Toutes les régions" if L == "fr" else "All regions"
+    all_departments_label = "Tous les départements" if L == "fr" else "All departments"
+
+    region_options = dept_reference["region_name"].dropna().drop_duplicates().sort_values().tolist()
+    selected_region_names = st.multiselect(
+        "Régions" if L == "fr" else "Regions",
+        options=region_options,
+        default=[],
+        placeholder=all_regions_label,
+        help=(
+            "Vous pouvez sélectionner plusieurs régions. Laissez vide pour voir toute la France."
+            if L == "fr"
+            else "You can select multiple regions. Leave empty to view whole France."
+        ),
+    )
+
+    dept_options_df = dept_reference.copy()
+    if selected_region_names:
+        dept_options_df = dept_options_df[dept_options_df["region_name"].isin(selected_region_names)]
+
+    # Sort departments numerically by code
+    dept_options_df = dept_options_df.copy()
+    dept_options_df["_sort_key"] = dept_options_df["dept"].apply(
+        lambda d: (0, int(d)) if d.isdigit() else (1, ord(d[0]) * 1000 + ord(d[-1]))
+    )
+    dept_options_df = dept_options_df.sort_values("_sort_key").drop(columns=["_sort_key"])
+
+    dept_option_labels = dept_options_df["dept_label"].tolist()
+    selected_dept_labels = st.multiselect(
+        "Départements" if L == "fr" else "Departments",
+        options=dept_option_labels,
+        default=[],
+        placeholder=all_departments_label,
+        help=(
+            "Optionnel : sélectionnez un ou plusieurs départements pour un focus précis."
+            if L == "fr"
+            else "Optional: select one or more departments for a focused view."
+        ),
     )
 
     st.divider()
 
-    threshold = st.slider(
-        T["threshold"][L],
-        min_value=1.0, max_value=4.5, value=2.5, step=0.1,
-        help="APL < threshold → commune considered a medical desert. Default: 2.5"
-    )
+    with st.expander("⚙️ Paramètres d'analyse" if L == "fr" else "⚙️ Analysis parameters", expanded=False):
+        st.caption(
+            "Par défaut, le dashboard utilise le seuil DREES de 2.5. Le modifier sert surtout à faire du scénario / benchmark."
+            if L == "fr"
+            else "By default, the dashboard uses the DREES threshold of 2.5. Changing it is mainly useful for scenario analysis / benchmarking."
+        )
+        use_custom_threshold = st.checkbox(
+            "Personnaliser le seuil APL" if L == "fr" else "Customize APL threshold",
+            value=False,
+            help=(
+                "APL < seuil = commune comptée comme sous-dotée pour les graphiques comparatifs."
+                if L == "fr"
+                else "APL < threshold = commune counted as under-served in comparative charts."
+            ),
+        )
+        threshold = 2.5
+        if use_custom_threshold:
+            threshold = st.slider(
+                "Seuil APL" if L == "fr" else "APL threshold",
+                min_value=1.5, max_value=4.0, value=2.5, step=0.1,
+            )
+            st.info(
+                f"{'Seuil actif' if L == 'fr' else 'Active threshold'} : {threshold:.1f}"
+            )
+        else:
+            st.markdown(
+                f"<div style='text-align:center;padding:6px 12px;background:rgba(110,168,255,0.12);border-radius:8px;"
+                f"font-size:0.85rem;font-weight:600;color:#93c5fd;margin:8px 0'>"
+                f"{'Seuil DREES fixe' if L == 'fr' else 'Fixed DREES threshold'} : 2.5</div>",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
     st.caption(T["source"][L])
@@ -351,23 +932,37 @@ with st.sidebar:
 # ── Data filtering + threshold recomputation ──────────────────────────────────
 communes = communes_raw.copy()
 communes["is_desert"] = (communes["apl_mg"] < threshold).astype(int)
+departments_live = _build_department_view(depts_raw, communes)
 
-cf = communes[communes["dept"].isin(selected)].copy() if selected else communes.copy()
-df = depts_raw[depts_raw["dept"].isin(selected)].copy() if selected else depts_raw.copy()
-
-# Recompute desert stats at dept level with the live threshold
-dept_desert_live = (
-    cf.groupby("dept")
-    .agg(
-        nb_communes_desert=("is_desert", "sum"),
-        nb_communes=("is_desert", "count"),
-        pct_desert=("is_desert", lambda x: round(x.mean() * 100, 2)),
-        pop_desert=("population", lambda x: (x * cf.loc[x.index, "is_desert"]).sum()),
-    )
-    .reset_index()
+selected_region_codes = (
+    dept_reference.loc[dept_reference["region_name"].isin(selected_region_names), "region_code"]
+    .dropna()
+    .astype(str)
+    .unique()
+    .tolist()
+    if selected_region_names else []
 )
-df = df.drop(columns=["nb_communes_desert", "pct_desert"], errors="ignore")
-df = df.merge(dept_desert_live[["dept", "pct_desert", "nb_communes_desert"]], on="dept", how="left")
+
+selected_depts = (
+    dept_reference.loc[dept_reference["dept_label"].isin(selected_dept_labels), "dept"]
+    .dropna()
+    .astype(str)
+    .tolist()
+    if selected_dept_labels else []
+)
+
+cf = communes.copy()
+df = departments_live.copy()
+if selected_region_codes:
+    cf = cf[cf["region_code"].isin(selected_region_codes)].copy()
+    df = df[df["region_code"].isin(selected_region_codes)].copy()
+if selected_depts:
+    cf = cf[cf["dept"].isin(selected_depts)].copy()
+    df = df[df["dept"].isin(selected_depts)].copy()
+
+dept_list = dept_reference["dept"].drop_duplicates().tolist()
+profile_dept = selected_depts[0] if selected_depts else dept_list[0]
+profile_index = dept_list.index(profile_dept) if profile_dept in dept_list else 0
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 total_communes  = len(cf)
@@ -378,35 +973,72 @@ pop_total       = cf["population"].sum()
 apl_median      = cf["apl_mg"].median()
 nb_critique     = int((cf["apl_mg"] < 1.5).sum())
 pct_critique    = (cf["apl_mg"] < 1.5).mean() * 100
+pop_desert_share = (pop_desert / pop_total * 100) if pop_total else 0
+df = df.copy()
+df["apl_gap"] = df["apl_median"] - threshold
+departments_live = departments_live.copy()
+departments_live["apl_gap"] = departments_live["apl_median"] - threshold
+scope_label = (
+    selected_dept_labels[0]
+    if len(selected_dept_labels) == 1
+    else (
+        (f"{len(selected_dept_labels)} départements" if L == "fr" else f"{len(selected_dept_labels)} departments")
+        if len(selected_dept_labels) > 1
+        else (
+            selected_region_names[0]
+            if len(selected_region_names) == 1
+            else (
+                (f"{len(selected_region_names)} régions" if L == "fr" else f"{len(selected_region_names)} regions")
+                if len(selected_region_names) > 1
+                else ("France entière" if L == "fr" else "Whole France")
+            )
+        )
+    )
+)
+if df.empty:
+    st.warning("Aucune donnée pour la sélection actuelle." if L == "fr" else "No data for current selection.")
+    st.stop()
+worst_row = df.sort_values("pct_desert", ascending=False).iloc[0]
+best_row = df.sort_values("pct_desert", ascending=True).iloc[0]
+lowest_apl_row = df.sort_values("apl_median", ascending=True).iloc[0]
+category_df = _category_breakdown(cf, L)
+quality_notes = []
+if len(communes_raw) > 10_000 and communes_raw["apl_mg"].nunique(dropna=True) < 100:
+    quality_notes.append(
+        "Le snapshot courant semble trop compressé pour une lecture fiable. Relancez le pipeline ou régénérez les fichiers de fallback."
+        if L == "fr"
+        else "The current snapshot looks overly compressed for reliable reading. Re-run the pipeline or refresh the fallback files."
+    )
+if len(depts_raw) > 50 and depts_raw["pct_desert"].nunique(dropna=True) < 5:
+    quality_notes.append(
+        "Les taux départementaux manquent de variation, ce qui indique souvent une source ou un snapshot incohérent."
+        if L == "fr"
+        else "Department rates show too little variation, which usually indicates a broken source parse or stale snapshot."
+    )
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="header-banner">
   <div class="header-title">
     🏥 {T['title'][L]}
-    <span class="badge">2021</span>
+    <span class="badge">APL 2023</span>
   </div>
-  <div class="header-sub">{T['subtitle'][L]} · DREES · INSEE · data.gouv.fr</div>
+  <div class="header-sub">{T['subtitle'][L]} · {scope_label} · MAJ: {load_last_refresh()}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── KPI CARDS ─────────────────────────────────────────────────────────────────
-def _color(val, green_below=None, red_above=None):
-    if red_above and val > red_above:
-        return "danger"
-    if green_below and val < green_below:
-        return "success"
-    return "warning"
+for note in quality_notes:
+    st.warning(note)
 
-danger_pct = pct_desert_nat > 30
-c1, c2, c3, c4, c5 = st.columns(5)
+# ── KPI CARDS ─────────────────────────────────────────────────────────────────
+c1, c2, c3, c4 = st.columns(4)
 
 with c1:
     st.markdown(f"""
     <div class="kpi-card" style="--accent-color: #4f7fff">
       <div class="kpi-label">{"Communes analysées" if L=="fr" else "Communes analysed"}</div>
       <div class="kpi-value">{total_communes:,}</div>
-      <div class="kpi-sub" style="color:#64748b">{len(df)} {"départements" if L=="fr" else "departments"}</div>
+      <div class="kpi-sub" style="color:#94a3b8">{len(df)} {"départements visibles" if L=="fr" else "departments in view"}</div>
     </div>""", unsafe_allow_html=True)
 
 with c2:
@@ -414,8 +1046,8 @@ with c2:
     st.markdown(f"""
     <div class="kpi-card" style="--accent-color: #ef4444">
       <div class="kpi-label">{T['k2'][L]}</div>
-      <div class="kpi-value">{nb_desert:,}</div>
-      <div class="kpi-sub {sub_class}">{pct_desert_nat:.1f}% {"des communes" if L=="fr" else "of communes"}</div>
+      <div class="kpi-value">{pct_desert_nat:.1f}%</div>
+      <div class="kpi-sub {sub_class}">{nb_desert:,} {"communes concernées" if L=="fr" else "communes concerned"}</div>
     </div>""", unsafe_allow_html=True)
 
 with c3:
@@ -424,7 +1056,7 @@ with c3:
     <div class="kpi-card" style="--accent-color: #f59e0b">
       <div class="kpi-label">{T['k3'][L]}</div>
       <div class="kpi-value">{pop_m:.1f}M</div>
-      <div class="kpi-sub warning">{pop_desert/pop_total*100:.1f}% {"de la pop." if L=="fr" else "of pop."}</div>
+      <div class="kpi-sub warning">{pop_desert_share:.1f}% {"de la pop." if L=="fr" else "of population"}</div>
     </div>""", unsafe_allow_html=True)
 
 with c4:
@@ -433,304 +1065,376 @@ with c4:
     <div class="kpi-card" style="--accent-color: #7c6af7">
       <div class="kpi-label">{T['k4'][L]}</div>
       <div class="kpi-value">{apl_median:.2f}</div>
-      <div class="kpi-sub {apl_class}">{"Seuil désert" if L=="fr" else "Desert threshold"}: {threshold}</div>
+      <div class="kpi-sub {apl_class}">{nb_critique:,} {"critiques" if L=="fr" else "critical"} · seuil {threshold:.1f}</div>
     </div>""", unsafe_allow_html=True)
 
-with c5:
-    st.markdown(f"""
-    <div class="kpi-card" style="--accent-color: #ef4444">
-      <div class="kpi-label">{T['k5'][L]}</div>
-      <div class="kpi-value">{nb_critique:,}</div>
-      <div class="kpi-sub danger">{pct_critique:.1f}% (APL &lt; 1.5)</div>
-    </div>""", unsafe_allow_html=True)
+# Only show comparison insights if there are multiple departments
+if len(df) > 1:
+    insight_left, insight_right = st.columns([1.4, 1])
+    with insight_left:
+        st.info(
+            (
+                f"Lecture rapide : {lowest_apl_row['dept_label']} a l'APL médiane la plus faible ({lowest_apl_row['apl_median']:.2f}), soit {_format_apl_gap(float(lowest_apl_row['apl_gap']), L)}."
+                if L == "fr"
+                else f"Quick read: {lowest_apl_row['dept_label']} has the lowest median APL ({lowest_apl_row['apl_median']:.2f}), {_format_apl_gap(float(lowest_apl_row['apl_gap']), L)}."
+            )
+        )
+    with insight_right:
+        st.success(
+            (
+                f"{best_row['dept_label']} reste le plus confortable · {_risk_status(float(best_row['pct_desert']), L)}."
+                if L == "fr"
+                else f"{best_row['dept_label']} is the most comfortable case · {_risk_status(float(best_row['pct_desert']), L)}."
+            )
+        )
+else:
+    st.info(
+        (
+            f"APL médiane : {lowest_apl_row['apl_median']:.2f} · {_apl_status(float(lowest_apl_row['apl_median']), L)} · {_format_apl_gap(float(lowest_apl_row['apl_gap']), L)}"
+            if L == "fr"
+            else f"Median APL: {lowest_apl_row['apl_median']:.2f} · {_apl_status(float(lowest_apl_row['apl_median']), L)} · {_format_apl_gap(float(lowest_apl_row['apl_gap']), L)}"
+        )
+    )
 
-st.markdown("<div style='margin-bottom:20px'></div>", unsafe_allow_html=True)
+with st.expander("Comment lire les métriques" if L == "fr" else "How to read the metrics"):
+    st.markdown(
+        (
+            "- **APL médiane**: accessibilité potentielle localisée médiane du périmètre affiché. Plus c'est élevé, meilleure est l'accessibilité.\n"
+            "- **Écart au seuil APL**: différence entre l'APL médiane d'un département et le seuil sélectionné. En dessous de `0`, le département passe sous le seuil d'alerte.\n"
+            "- **% communes en désert**: part des communes dont l'APL est inférieure au seuil configuré.\n"
+            "- **Population concernée**: population vivant dans les communes sous le seuil.\n"
+            "- **Communes critiques**: communes avec `APL < 1.5`, c'est le niveau le plus fragile du modèle."
+            if L == "fr"
+            else
+            "- **Median APL**: median local potential accessibility for the displayed scope. Higher is better.\n"
+            "- **APL gap to threshold**: difference between a department median APL and the selected threshold. Below `0`, the department falls under the alert line.\n"
+            "- **% communes in desert**: share of communes with APL below the configured threshold.\n"
+            "- **Affected population**: population living in communes below the threshold.\n"
+            "- **Critical communes**: communes with `APL < 1.5`, the most fragile level in the model."
+        )
+    )
+
+st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([T["t1"][L], T["t2"][L], T["t3"][L], T["t4"][L]])
+tab1, tab2, tab3 = st.tabs([
+    "🧭 Vue d'ensemble" if L == "fr" else "🧭 Overview",
+    "📊 Comparer" if L == "fr" else "📊 Compare",
+    "🎯 Focus département" if L == "fr" else "🎯 Department focus",
+])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 1 — MAP
+# TAB 1 — OVERVIEW
 # ════════════════════════════════════════════════════════════════════════════════
 with tab1:
     geo = load_dept_geojson()
 
-    if geo is None:
-        st.warning(T["no_map"][L])
-    else:
-        map_metric = st.radio(
-            "Métrique" if L == "fr" else "Metric",
-            [T["map_metric"][L], T["map_pct"][L]],
-            horizontal=True,
-        )
-        use_pct = map_metric == T["map_pct"][L]
-        color_col   = "pct_desert" if use_pct else "apl_mediane"
-        color_label = T["map_pct"][L] if use_pct else T["map_metric"][L]
+    overview_left, overview_right = st.columns([1.7, 1])
 
-        # Build geojson property key — features use 'code' field
-        geo_key = "code"
-        if geo["features"] and "properties" in geo["features"][0]:
-            props = geo["features"][0]["properties"]
-            geo_key = next(
-                (k for k in props if k in ("code", "CODE_DEPT", "DEP", "codgeo")),
-                list(props.keys())[0]
+    with overview_left:
+        if geo is None:
+            st.warning(T["no_map"][L])
+        else:
+            map_metric = st.radio(
+                "La carte montre" if L == "fr" else "Map shows",
+                [T["map_metric"][L], T["map_pct"][L]],
+                horizontal=True,
+            )
+            use_pct = map_metric == T["map_pct"][L]
+            color_col = "pct_desert" if use_pct else "apl_median"
+            color_label = T["map_pct"][L] if use_pct else T["map_metric"][L]
+            geo_key = "code"
+            if geo["features"] and "properties" in geo["features"][0]:
+                props = geo["features"][0]["properties"]
+                geo_key = next(
+                    (k for k in props if k in ("code", "CODE_DEPT", "DEP", "codgeo")),
+                    list(props.keys())[0]
+                )
+
+            fig_map = px.choropleth_mapbox(
+                df,
+                geojson=geo,
+                locations="dept",
+                featureidkey=f"properties.{geo_key}",
+                color=color_col,
+                color_continuous_scale="RdYlGn_r" if use_pct else "RdYlGn",
+                mapbox_style="carto-darkmatter",
+                zoom=4.7,
+                center={"lat": 46.5, "lon": 2.3},
+                opacity=0.86,
+                hover_data={
+                    "dept": True,
+                    "apl_median": ":.2f",
+                    "pct_desert": ":.1f",
+                    "doctors_per_10k": ":.1f" if "doctors_per_10k" in df.columns else False,
+                    "total_population": ":,.0f",
+                },
+                labels={
+                    "dept": "Dép.",
+                    "apl_median": "APL médiane",
+                    "pct_desert": "% désert",
+                    "doctors_per_10k": "Médecins/10k",
+                    "total_population": "Population",
+                },
+            )
+            fig_map.update_layout(
+                **DARK_LAYOUT,
+                height=520,
+                coloraxis_colorbar=dict(
+                    title=color_label,
+                    tickfont=dict(color="#f8fafc", size=12),
+                    titlefont=dict(color="#f8fafc", size=12),
+                    bgcolor="rgba(16,26,43,0.82)",
+                    outlinecolor="#475569",
+                ),
+            )
+            fig_map.update_layout(margin=dict(t=10, r=10, b=10, l=10))
+            st.plotly_chart(fig_map, use_container_width=True)
+
+    with overview_right:
+        top5 = df.nlargest(min(5, len(df)), "pct_desert")[["dept_label", "pct_desert", "apl_median"]].copy()
+        insights = [
+            (
+                "APL la plus faible" if L == "fr" else "Lowest APL",
+                f"{lowest_apl_row['dept_label']} ({lowest_apl_row['apl_median']:.2f})",
+            ),
+            (
+                "Écart au seuil" if L == "fr" else "Gap to threshold",
+                _format_apl_gap(float(lowest_apl_row['apl_gap']), L),
+            ),
+            (
+                "Référence haute" if L == "fr" else "Best reference",
+                f"{best_row['dept_label']} · {best_row['apl_median']:.2f} APL",
+            ),
+            (
+                "Communes critiques" if L == "fr" else "Critical communes",
+                f"{nb_critique:,}",
+            ),
+            (
+                "Seuil actif" if L == "fr" else "Active threshold",
+                f"{threshold:.1f}",
+            ),
+        ]
+        insight_html = "".join(
+            f"<div class='insight-item'><strong>{label}</strong><span>{value}</span></div>"
+            for label, value in insights
+        )
+        ranking_html = "".join(
+            f"<div class='mini-ranking-row'>"
+            f"<div class='mini-rank-badge'>{idx}</div>"
+            f"<div class='mini-rank-name'>{row.dept_label}</div>"
+            f"<div class='mini-rank-metric'>{_format_pct(float(row.pct_desert))}</div>"
+            f"<div class='mini-rank-sub'>{row.apl_median:.2f} APL</div>"
+            f"</div>"
+            for idx, row in enumerate(top5.itertuples(index=False), start=1)
+        )
+        st.markdown(
+            f"<div class='insight-panel'>"
+            f"<h3>{'À retenir' if L == 'fr' else 'Key takeaways'}</h3>"
+            f"<div class='insight-list'>{insight_html}</div>"
+            f"<div class='chart-sub'>{'Top 5 des départements les plus exposés' if L == 'fr' else 'Top 5 most exposed departments'}</div>"
+            f"<div class='mini-ranking'>{ranking_html}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Ici, le tableau classe les départements selon la part de communes sous le seuil. Cela peut différer du classement par APL médiane."
+            if L == "fr"
+            else "This table ranks departments by the share of communes below the threshold. It can differ from the ranking based on median APL."
+        )
+
+    row_left, row_right = st.columns([1.2, 1])
+
+    with row_left:
+        bar_data = df.nsmallest(min(12, len(df)), "apl_gap").sort_values("apl_gap", ascending=True)
+        fig_bar = px.bar(
+            bar_data,
+            x="apl_gap",
+            y="dept_label",
+            orientation="h",
+            color="apl_gap",
+            color_continuous_scale="RdYlGn",
+            text=bar_data["apl_gap"].map(lambda v: _format_gap_short(float(v))),
+        )
+        fig_bar.update_traces(
+            textposition="outside",
+            cliponaxis=False,
+            textfont=dict(color="#f8fafc", size=12),
+            hovertemplate="%{y}<br>Écart au seuil: %{x:.2f}<extra></extra>",
+        )
+        fig_bar.update_layout(
+            **DARK_LAYOUT,
+            height=420,
+            title=dict(
+                text="Départements les plus proches ou sous le seuil" if L == "fr" else "Departments closest to or below the threshold",
+                x=0,
+                font=dict(size=14),
+            ),
+            coloraxis_showscale=False,
+        )
+        fig_bar.update_layout(margin=dict(t=60, r=48, b=20, l=20))
+        fig_bar.add_vline(x=0, line_dash="dash", line_color="#ef4444")
+        fig_bar.update_xaxes(title="Écart APL vs seuil" if L == "fr" else "APL gap vs threshold")
+        fig_bar.update_yaxes(title="")
+        st.plotly_chart(fig_bar, use_container_width=True)
+        st.caption(
+            "Lecture: ce graphique est trié par APL médiane relative au seuil. Un département peut être très bas en APL médiane sans être le pire en % de communes sous le seuil."
+            if L == "fr"
+            else "Reading note: this chart is ranked by median APL relative to the threshold. A department can have the lowest median APL without having the highest share of communes below threshold."
+        )
+
+    with row_right:
+        fig_categories = px.bar(
+            category_df.sort_values("share"),
+            x="share",
+            y="label",
+            orientation="h",
+            color="label",
+            text=category_df.sort_values("share")["share"].map(_format_pct),
+            color_discrete_map={row["label"]: row["color"] for _, row in category_df.iterrows()},
+        )
+        fig_categories.update_traces(
+            textposition="outside",
+            cliponaxis=False,
+            textfont=dict(color="#f8fafc", size=12),
+            hovertemplate="%{y}<br>%{x:.1f}% des communes<extra></extra>",
+        )
+        fig_categories.update_layout(
+            **DARK_LAYOUT,
+            height=420,
+            title=dict(
+                text="Répartition des communes par niveau d’accès" if L == "fr" else "Commune split by access level",
+                x=0,
+                font=dict(size=14),
+            ),
+            showlegend=False,
+        )
+        fig_categories.update_layout(margin=dict(t=60, r=48, b=20, l=20))
+        fig_categories.update_xaxes(title="Part des communes" if L == "fr" else "Share of communes")
+        fig_categories.update_yaxes(title="")
+        st.plotly_chart(fig_categories, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 2 — COMPARISON
+# ════════════════════════════════════════════════════════════════════════════════
+with tab2:
+    compare_controls_left, compare_controls_right = st.columns([1, 1])
+    with compare_controls_left:
+        metric_label = st.selectbox(
+            "Classement sur" if L == "fr" else "Rank by",
+            options=[
+                "Écart au seuil APL" if L == "fr" else "APL gap to threshold",
+                "% communes en désert",
+                "APL médiane",
+                "Médecins / 10k",
+                "Population concernée",
+            ],
+        )
+    with compare_controls_right:
+        n_depts = len(df)
+        if n_depts <= 1:
+            top_n = n_depts
+        else:
+            slider_max = min(30, n_depts)
+            slider_default = min(12, slider_max)
+            top_n = st.slider(
+                "Nombre de départements" if L == "fr" else "Number of departments",
+                1, slider_max, slider_default,
             )
 
-        scale = COLOR_SCALE if use_pct else "RdYlGn"
+    metric_map = {
+        "Écart au seuil APL" if L == "fr" else "APL gap to threshold": "apl_gap",
+        "% communes en désert": "pct_desert",
+        "APL médiane": "apl_median",
+        "Médecins / 10k": "doctors_per_10k",
+        "Population concernée": "pop_desert",
+    }
+    metric_col = metric_map[metric_label]
+    ascending = metric_col in {"apl_gap", "apl_median"}
+    ranked = df.dropna(subset=[metric_col]).sort_values(metric_col, ascending=ascending).head(top_n).copy()
+    if ascending:
+        ranked = ranked.sort_values(metric_col, ascending=False)
 
-        fig_map = px.choropleth_mapbox(
-            df,
-            geojson=geo,
-            locations="dept",
-            featureidkey=f"properties.{geo_key}",
-            color=color_col,
-            color_continuous_scale=scale,
-            mapbox_style="carto-darkmatter",
-            zoom=4.7,
-            center={"lat": 46.5, "lon": 2.3},
-            opacity=0.82,
-            hover_data={
-                "dept": True,
-                "apl_mediane": ":.2f",
-                "pct_desert": ":.1f",
-                "med_pour_10k": ":.1f" if "med_pour_10k" in df.columns else False,
-                "population_totale": ":,.0f",
-            },
-            labels={
-                "dept": "Dép.",
-                "apl_mediane": "APL médiane",
-                "pct_desert": "% désert",
-                "med_pour_10k": "Médecins/10k",
-                "population_totale": "Population",
-            },
+    compare_left, compare_right = st.columns([1.1, 0.9])
+
+    with compare_left:
+        fig_compare = px.bar(
+            ranked.sort_values(metric_col, ascending=True),
+            x=metric_col,
+            y="dept_label",
+            orientation="h",
+            color=metric_col,
+            color_continuous_scale="RdYlGn" if metric_col in {"apl_gap", "apl_median"} else "RdYlGn_r",
         )
-        fig_map.update_layout(
+        fig_compare.update_layout(
             **DARK_LAYOUT,
-            height=580,
-            coloraxis_colorbar=dict(
-                title=color_label,
-                tickfont=dict(color="#94a3b8"),
-                titlefont=dict(color="#94a3b8"),
+            height=500,
+            title=dict(
+                text=(f"Lecture par {metric_label}" if L == "fr" else f"View by {metric_label}"),
+                x=0,
+                font=dict(size=14),
             ),
+            coloraxis_showscale=False,
         )
-        st.plotly_chart(fig_map, use_container_width=True)
+        fig_compare.update_layout(margin=dict(t=60, r=20, b=20, l=20))
+        if metric_col == "apl_gap":
+            fig_compare.add_vline(x=0, line_dash="dash", line_color="#ef4444")
+        fig_compare.update_yaxes(title="")
+        fig_compare.update_xaxes(title=metric_label)
+        st.plotly_chart(fig_compare, use_container_width=True)
+        compare_note = (
+            "Le classement actuel repose sur l'écart entre APL médiane et seuil. Changez la métrique ci-dessus pour comparer plutôt le % désert, la densité médicale ou la population concernée."
+            if L == "fr"
+            else "The current ranking is driven by the gap between median APL and the threshold. Change the metric above to compare desert rate, doctor density, or affected population instead."
+        )
+        if metric_col == "apl_gap":
+            st.caption(compare_note)
 
-        # Context note under map
-        worst = df.nlargest(3, "pct_desert")["dept"].tolist()
+    with compare_right:
+        compare_rows = "".join(
+            f"<div class='compare-row'>"
+            f"<div class='compare-cell'>{row.dept_label}</div>"
+            f"<div class='compare-cell danger'>{_format_gap_short(float(row.apl_gap))}</div>"
+            f"<div class='compare-cell'>{_format_pct(float(row.pct_desert))}</div>"
+            f"<div class='compare-cell'>{float(row.apl_median):.2f}</div>"
+            f"<div class='compare-cell'>{('N/A' if pd.isna(row.doctors_per_10k) else f'{float(row.doctors_per_10k):.1f}')}</div>"
+            f"<div class='compare-cell muted'>{_format_int(float(row.total_population))}</div>"
+            f"</div>"
+            for row in ranked.itertuples(index=False)
+        )
         st.markdown(
-            f"<div class='footer-note'>"
-            f"{'Départements les plus touchés' if L=='fr' else 'Most affected departments'}: "
-            f"<strong>{'  ·  '.join(worst)}</strong> · "
-            f"{'APL < ' + str(threshold) + ' → désert médical' if L=='fr' else 'APL < ' + str(threshold) + ' → medical desert'}"
-            f"</div>",
+            "<div class='compare-panel'>"
+            "<div class='compare-panel-title'>Lecture détaillée</div>"
+            "<div class='compare-grid'>"
+            "<div class='compare-row header'>"
+            "<div>Département</div>"
+            "<div>Écart seuil</div>"
+            "<div>% désert</div>"
+            "<div>APL médiane</div>"
+            "<div>Médecins/10k</div>"
+            "<div>Population</div>"
+            "</div>"
+            f"{compare_rows}"
+            "</div>"
+            "</div>",
             unsafe_allow_html=True,
         )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 2 — NATIONAL ANALYSIS
-# ════════════════════════════════════════════════════════════════════════════════
-with tab2:
-    col_a, col_b = st.columns([1, 1])
-
-    with col_a:
-        # Horizontal bar: worst departments
-        bar_data = df.nlargest(20, "pct_desert")
-        fig_bar = go.Figure(go.Bar(
-            x=bar_data["pct_desert"],
-            y=bar_data["dept"],
-            orientation="h",
-            marker=dict(
-                color=bar_data["pct_desert"],
-                colorscale="RdYlGn_r",
-                cmin=0,
-                cmax=df["pct_desert"].max(),
-                showscale=False,
-            ),
-            text=bar_data["pct_desert"].apply(lambda v: f"{v:.1f}%"),
-            textposition="outside",
-            textfont=dict(size=11, color="#94a3b8"),
-            hovertemplate="Dept %{y}<br>% désert: %{x:.1f}%<extra></extra>",
-        ))
-        fig_bar.update_layout(
-            **DARK_LAYOUT,
-            title=dict(
-                text="🔴 Top 20 — " + ("Départements les plus touchés" if L == "fr" else "Most affected departments"),
-                font=dict(size=13), x=0
-            ),
-            height=500,
-            yaxis=dict(autorange="reversed", tickfont=dict(size=11)),
-            xaxis=dict(title="% communes en désert"),
-            bargap=0.25,
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    with col_b:
-        # Treemap: departments sized by pop in desert, colored by %
-        tree_df = df.dropna(subset=["pct_desert", "nb_communes_desert", "nb_communes"])
-        tree_df = tree_df.copy()
-        tree_df["pop_desert_est"] = (
-            tree_df["pct_desert"] / 100 * tree_df.get("population_totale", tree_df["nb_communes"] * 1500)
-        ).astype(int).clip(lower=1)
-
-        fig_tree = px.treemap(
-            tree_df,
-            path=["dept"],
-            values="pop_desert_est",
-            color="pct_desert",
-            color_continuous_scale="RdYlGn_r",
-            hover_data={"pct_desert": ":.1f", "nb_communes_desert": True},
-            labels={"pct_desert": "% désert", "nb_communes_desert": "Communes désert"},
-        )
-        fig_tree.update_traces(
-            textinfo="label+percent root",
-            textfont=dict(size=12, family="Inter"),
-            hovertemplate="<b>%{label}</b><br>% désert: %{color:.1f}%<br>Pop. en désert: %{value:,.0f}<extra></extra>",
-        )
-        fig_tree.update_layout(
-            **DARK_LAYOUT,
-            title=dict(
-                text="🌍 " + ("Population en désert par département" if L == "fr" else "Population in desert by department"),
-                font=dict(size=13), x=0
-            ),
-            height=500,
-            coloraxis_colorbar=dict(
-                title="% désert",
-                tickfont=dict(color="#94a3b8"),
-                titlefont=dict(color="#94a3b8"),
-            ),
-        )
-        st.plotly_chart(fig_tree, use_container_width=True)
-
-    # Scatter: doctors vs APL
-    if "med_pour_10k" in df.columns and df["med_pour_10k"].notna().any():
-        sc_df = df.dropna(subset=["med_pour_10k", "apl_mediane", "population_totale"])
-
-        fig_sc = go.Figure()
-        fig_sc.add_trace(go.Scatter(
-            x=sc_df["med_pour_10k"],
-            y=sc_df["apl_mediane"],
-            mode="markers+text",
-            text=sc_df["dept"],
-            textposition="top center",
-            textfont=dict(size=9, color="#94a3b8"),
-            marker=dict(
-                size=sc_df["population_totale"] / sc_df["population_totale"].max() * 40 + 8,
-                color=sc_df["pct_desert"],
-                colorscale="RdYlGn_r",
-                showscale=True,
-                colorbar=dict(
-                    title="% désert",
-                    tickfont=dict(color="#94a3b8"),
-                    titlefont=dict(color="#94a3b8"),
-                ),
-                line=dict(color="rgba(255,255,255,0.15)", width=1),
-            ),
-            hovertemplate="<b>Dept %{text}</b><br>Médecins/10k: %{x:.1f}<br>APL médiane: %{y:.2f}<extra></extra>",
-        ))
-        fig_sc.add_hline(
-            y=threshold, line_dash="dash", line_color="#ef4444",
-            annotation_text=f"Seuil désert (APL {threshold})",
-            annotation_font_color="#ef4444",
-            annotation_position="bottom right",
-        )
-        fig_sc.update_layout(
-            **DARK_LAYOUT,
-            title=dict(
-                text="💊 " + ("Médecins/10k hab vs APL médiane — taille = population" if L == "fr"
-                               else "Doctors/10k pop vs median APL — bubble size = population"),
-                font=dict(size=13), x=0
-            ),
-            xaxis_title="Médecins généralistes / 10 000 hab",
-            yaxis_title="APL médiane",
-            height=480,
-        )
-        st.plotly_chart(fig_sc, use_container_width=True)
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 3 — RANKING TABLE
+# TAB 3 — DEPARTMENT FOCUS
 # ════════════════════════════════════════════════════════════════════════════════
 with tab3:
-    col_r1, col_r2 = st.columns([3, 2])
-
-    with col_r1:
-        # Styled ranking dataframe
-        display_cols = ["dept", "apl_mediane", "pct_desert", "nb_communes", "nb_communes_desert"]
-        if "med_pour_10k" in df.columns:
-            display_cols.append("med_pour_10k")
-        if "population_totale" in df.columns:
-            display_cols.append("population_totale")
-
-        table_df = df[display_cols].copy().sort_values("pct_desert", ascending=False)
-        table_df.columns = [
-            "Département", "APL médiane", "% désert",
-            "Communes", "Communes désert",
-        ] + (["Médecins/10k"] if "med_pour_10k" in display_cols else []) \
-          + (["Population"] if "population_totale" in display_cols else [])
-
-        st.dataframe(
-            table_df.style
-            .background_gradient(subset=["% désert"], cmap="RdYlGn_r", vmin=0, vmax=100)
-            .background_gradient(subset=["APL médiane"], cmap="RdYlGn", vmin=0, vmax=6)
-            .format({"APL médiane": "{:.2f}", "% désert": "{:.1f}%",
-                     "Médecins/10k": "{:.1f}" if "Médecins/10k" in table_df.columns else "{}",
-                     "Population": "{:,.0f}" if "Population" in table_df.columns else "{}"}),
-            use_container_width=True,
-            height=480,
-        )
-
-    with col_r2:
-        # APL distribution histogram (national)
-        fig_hist = go.Figure()
-        fig_hist.add_trace(go.Histogram(
-            x=cf["apl_mg"],
-            nbinsx=50,
-            marker=dict(
-                color=cf["apl_mg"].apply(
-                    lambda v: "#ef4444" if v < 1.5
-                    else "#f59e0b" if v < threshold
-                    else "#10b981"
-                ),
-                line=dict(width=0.3, color="#1a1d27"),
-            ),
-            hovertemplate="APL: %{x:.1f}<br>Communes: %{y}<extra></extra>",
-        ))
-        fig_hist.add_vline(
-            x=threshold, line_dash="dash", line_color="#ef4444",
-            annotation_text=f"Seuil: {threshold}",
-            annotation_font_color="#ef4444",
-        )
-        fig_hist.add_vline(
-            x=1.5, line_dash="dot", line_color="#f97316",
-            annotation_text="Critique: 1.5",
-            annotation_font_color="#f97316",
-            annotation_position="top left",
-        )
-        fig_hist.update_layout(
-            **DARK_LAYOUT,
-            title=dict(text="📊 " + ("Distribution APL — toutes communes" if L == "fr" else "APL Distribution — all communes"),
-                       font=dict(size=13), x=0),
-            xaxis_title="APL (consultations/hab/an)",
-            yaxis_title="Nombre de communes",
-            height=480,
-            bargap=0.02,
-            showlegend=False,
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 4 — DEPARTMENT PROFILE
-# ════════════════════════════════════════════════════════════════════════════════
-with tab4:
+    available_depts = [dept for dept in dept_list if dept in set(df["dept"].dropna().astype(str))] or dept_list
     dept_sel = st.selectbox(
         "Département",
-        options=dept_list,
-        format_func=lambda d: f"Dept {d}",
+        options=available_depts,
+        index=(available_depts.index(profile_dept) if profile_dept in available_depts else 0),
+        format_func=lambda d: dept_reference.loc[dept_reference["dept"] == d, "dept_label"].iloc[0],
     )
-    row  = depts_raw[depts_raw["dept"] == dept_sel]
+    row  = departments_live[departments_live["dept"] == dept_sel]
     comm = communes[communes["dept"] == dept_sel]
 
     if row.empty or comm.empty:
@@ -746,10 +1450,10 @@ with tab4:
         st.markdown(f"""
         <div style="background:#1a1d27;border:1px solid #2d3148;border-left:4px solid {color_accent};
                     border-radius:12px;padding:20px 24px;margin-bottom:20px">
-          <div style="font-size:1.4rem;font-weight:700;color:#f1f5f9">Département {dept_sel}</div>
-          <div style="font-size:0.8rem;color:#64748b;margin-top:4px">
+                    <div style="font-size:1.4rem;font-weight:700;color:#f1f5f9">{r.get('dept_label', dept_sel)}</div>
+          <div style="font-size:0.8rem;color:#94a3b8;margin-top:4px">
             {len(comm):,} {"communes analysées" if L=="fr" else "communes analysed"} ·
-            Population: {r.get('population_totale', 0):,.0f}
+                        Population: {r.get('total_population', 0):,.0f}
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -759,8 +1463,8 @@ with tab4:
         nat_apl = communes["apl_mg"].median()
 
         with m1:
-            delta_apl = r["apl_mediane"] - nat_apl
-            st.metric("APL médiane", f"{r['apl_mediane']:.2f}",
+            delta_apl = r["apl_median"] - nat_apl
+            st.metric("APL médiane", f"{r['apl_median']:.2f}",
                       delta=f"{delta_apl:+.2f} vs France", delta_color="normal")
         with m2:
             st.metric("% désert", f"{pct_d:.1f}%")
@@ -768,7 +1472,7 @@ with tab4:
             nb_d = int(comm["is_desert"].sum())
             st.metric("Communes désert", f"{nb_d:,}")
         with m4:
-            med_v = r.get("med_pour_10k")
+            med_v = r.get("doctors_per_10k")
             if pd.notna(med_v):
                 st.metric("Médecins / 10k hab", f"{med_v:.1f}")
             else:
@@ -777,115 +1481,114 @@ with tab4:
         col_p1, col_p2 = st.columns([1, 1])
 
         with col_p1:
-            # Donut chart — APL category distribution
-            cat_order = ["désert_critique", "sous-doté", "correct", "bien_doté"]
-            cat_colors = {"désert_critique": "#ef4444", "sous-doté": "#f59e0b",
-                          "correct": "#3b82f6", "bien_doté": "#10b981"}
-            cat_counts = comm["apl_cat"].value_counts().reindex(cat_order).fillna(0)
-
-            fig_donut = go.Figure(go.Pie(
-                labels=cat_counts.index.tolist(),
-                values=cat_counts.values.tolist(),
-                hole=0.58,
-                marker=dict(
-                    colors=[cat_colors[c] for c in cat_counts.index],
-                    line=dict(color="#0f1117", width=2),
-                ),
-                textfont=dict(family="Inter", size=12),
-                hovertemplate="%{label}<br>%{value:,} communes (%{percent})<extra></extra>",
-            ))
-            fig_donut.update_layout(
+            profile_categories = _category_breakdown(comm, L).sort_values("share")
+            fig_profile_categories = px.bar(
+                profile_categories,
+                x="share",
+                y="label",
+                orientation="h",
+                color="label",
+                text=profile_categories["share"].map(_format_pct),
+                color_discrete_map={row["label"]: row["color"] for _, row in profile_categories.iterrows()},
+            )
+            fig_profile_categories.update_traces(
+                textposition="outside",
+                cliponaxis=False,
+                textfont=dict(color="#f8fafc", size=12),
+            )
+            fig_profile_categories.update_layout(
                 **DARK_LAYOUT,
-                title=dict(text="Répartition des communes par catégorie APL",
+                title=dict(text="Structure du département" if L == "fr" else "Department structure",
                            font=dict(size=13), x=0),
-                legend=dict(font=dict(color="#94a3b8", size=11),
-                            bgcolor="rgba(0,0,0,0)", x=0.7, y=0.5),
-                annotations=[dict(
-                    text=f"<b>{pct_d:.0f}%</b><br><span style='font-size:10px'>désert</span>",
-                    x=0.5, y=0.5, font_size=18, font_color="#f1f5f9", showarrow=False,
-                )],
+                showlegend=False,
                 height=380,
             )
-            st.plotly_chart(fig_donut, use_container_width=True)
+            fig_profile_categories.update_xaxes(title="Part des communes" if L == "fr" else "Share of communes")
+            fig_profile_categories.update_yaxes(title="")
+            st.plotly_chart(fig_profile_categories, use_container_width=True)
 
         with col_p2:
-            # APL histogram for this dept vs national overlay
-            fig_dept_hist = go.Figure()
-
-            # National reference (lighter)
-            fig_dept_hist.add_trace(go.Histogram(
-                x=communes["apl_mg"],
-                nbinsx=60,
-                name="France",
-                marker_color="rgba(100,116,139,0.3)",
-                histnorm="probability density",
-                hovertemplate="France — APL: %{x:.1f}<extra></extra>",
-            ))
-            # Dept highlight
-            fig_dept_hist.add_trace(go.Histogram(
-                x=comm["apl_mg"],
-                nbinsx=30,
-                name=f"Dept {dept_sel}",
-                marker_color=color_accent,
-                opacity=0.8,
-                histnorm="probability density",
-                hovertemplate=f"Dept {dept_sel} — APL: %{{x:.1f}}<extra></extra>",
-            ))
-            fig_dept_hist.add_vline(
-                x=threshold, line_dash="dash", line_color="#ef4444",
-                annotation_text=f"Seuil {threshold}",
-                annotation_font_color="#ef4444",
+            benchmark_df = pd.DataFrame(
+                {
+                    "label": ["Département" if L == "fr" else "Department", "France", "Seuil" if L == "fr" else "Threshold"],
+                    "value": [r["apl_median"], departments_live["apl_median"].median(), threshold],
+                    "color": [color_accent, "#94a3b8", "#ef4444"],
+                }
             )
-            fig_dept_hist.add_vline(
-                x=nat_apl, line_dash="dot", line_color="#94a3b8",
-                annotation_text=f"Médiane France ({nat_apl:.2f})",
-                annotation_font_color="#94a3b8",
-                annotation_position="top left",
+            fig_box = go.Figure()
+            fig_box.add_trace(
+                go.Scatter(
+                    x=benchmark_df["value"],
+                    y=benchmark_df["label"],
+                    mode="markers+text",
+                    text=[f"{v:.2f}" for v in benchmark_df["value"]],
+                    textposition="middle right",
+                    marker=dict(size=16, color=benchmark_df["color"], line=dict(width=1, color="#ffffff")),
+                    hovertemplate="%{y}: %{x:.2f}<extra></extra>",
+                )
             )
-            fig_dept_hist.update_layout(
+            fig_box.add_shape(
+                type="line",
+                x0=0,
+                x1=max(5.5, float(benchmark_df["value"].max()) + 0.5),
+                y0=0,
+                y1=0,
+                line=dict(color="rgba(255,255,255,0.08)", width=1),
+            )
+            fig_box.update_layout(
                 **DARK_LAYOUT,
-                title=dict(text=f"Distribution APL — Dept {dept_sel} vs France",
+                title=dict(text=(f"Repères APL — {r.get('dept_label', dept_sel)}" if L == "fr" else f"APL benchmarks — {r.get('dept_label', dept_sel)}"),
                            font=dict(size=13), x=0),
                 xaxis_title="APL",
-                yaxis_title="Densité",
-                legend=dict(font=dict(color="#94a3b8"), bgcolor="rgba(0,0,0,0)"),
-                barmode="overlay",
+                yaxis_title="",
                 height=380,
+                showlegend=False,
             )
-            st.plotly_chart(fig_dept_hist, use_container_width=True)
+            fig_box.update_xaxes(range=[0, max(5.5, float(benchmark_df["value"].max()) + 0.7)])
+            st.plotly_chart(fig_box, use_container_width=True)
 
-        # APL gauge
-        apl_val = r["apl_mediane"]
-        fig_gauge = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=apl_val,
-            delta={"reference": threshold, "suffix": " vs seuil",
-                   "font": {"color": "#94a3b8"}},
-            number={"suffix": " APL", "font": {"size": 28, "color": "#f1f5f9",
-                                                "family": "Inter"}},
-            gauge=dict(
-                axis=dict(range=[0, 8], tickcolor="#64748b",
-                          tickfont=dict(color="#64748b")),
-                bar=dict(color="#4f7fff", thickness=0.25),
-                bgcolor="#1a1d27",
-                borderwidth=0,
-                steps=[
-                    dict(range=[0, 1.5],    color="#ef4444"),
-                    dict(range=[1.5, threshold], color="#f59e0b"),
-                    dict(range=[threshold, 4.0], color="#3b82f6"),
-                    dict(range=[4.0, 8.0],  color="#10b981"),
-                ],
-                threshold=dict(line=dict(color="#ffffff", width=2),
-                               thickness=0.75, value=threshold),
-            ),
-        ))
-        fig_gauge.update_layout(
-            **DARK_LAYOUT,
-            title=dict(text=f"Score APL médiane — Dept {dept_sel}",
-                       font=dict(size=13), x=0),
-            height=280,
-        )
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        insight_col1, insight_col2 = st.columns([1, 1])
+        with insight_col1:
+            st.markdown(
+                f"### {'Lecture du département' if L == 'fr' else 'Department read'}\n"
+                f"- **Rang national** : {int((departments_live['pct_desert'] > pct_d).sum()) + 1} / {len(departments_live)}\n"
+                f"- **Lecture risque** : {_risk_status(float(pct_d), L)}\n"
+                f"- **Communes critiques** : {_format_pct(float((comm['apl_mg'] < 1.5).mean() * 100))}\n"
+                f"- **APL médiane** : {r['apl_median']:.2f} · {_apl_status(float(r['apl_median']), L)}\n"
+                f"- **Population exposée** : {_format_int(float(r.get('pop_desert', 0)))}"
+            )
+        with insight_col2:
+            benchmark_rows = [
+                ("APL médiane", f"{r['apl_median']:.2f}", f"{departments_live['apl_median'].median():.2f}"),
+                ("% désert", _format_pct(float(pct_d)), _format_pct(float(departments_live['pct_desert'].mean()))),
+                (
+                    "Médecins/10k",
+                    "N/A" if pd.isna(r.get('doctors_per_10k')) else f"{r['doctors_per_10k']:.1f}",
+                    f"{departments_live['doctors_per_10k'].median():.1f}" if departments_live['doctors_per_10k'].notna().any() else "N/A",
+                ),
+            ]
+            benchmark_html = "".join(
+                f"<div class='profile-summary-row'>"
+                f"<div class='profile-summary-cell'>{label}</div>"
+                f"<div class='profile-summary-cell'>{dept_val}</div>"
+                f"<div class='profile-summary-cell muted'>{fr_val}</div>"
+                f"</div>"
+                for label, dept_val, fr_val in benchmark_rows
+            )
+            st.markdown(
+                "<div class='profile-summary-panel'>"
+                "<div class='profile-summary-title'>Comparatif rapide</div>"
+                "<div class='profile-summary-grid'>"
+                "<div class='profile-summary-row header'>"
+                "<div>Indicateur</div>"
+                "<div>Département</div>"
+                "<div>France</div>"
+                "</div>"
+                f"{benchmark_html}"
+                "</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown(

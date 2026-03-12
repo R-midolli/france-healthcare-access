@@ -1,7 +1,6 @@
 import pytest
 import pandas as pd
-from pathlib import Path
-from src.transform import build_communes_enriched, build_departements_summary
+from src.transform import build_communes_enriched
 
 def test_build_communes_enriched(tmp_path):
     raw_dir = tmp_path / "raw"

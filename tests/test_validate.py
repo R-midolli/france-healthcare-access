@@ -1,6 +1,4 @@
-import pytest
 import pandas as pd
-from pathlib import Path
 from src.validate import validate
 
 def test_validate_warnings(tmp_path):

@@ -1,21 +1,21 @@
 {
+  "generated_at": "2026-03-11T21:39:49.605424+00:00",
   "errors": [],
   "warnings": [],
   "stats": {
-    "nb_communes": 35000,
-    "nb_communes_desert": 365,
-    "pct_communes_desert": 1.0,
-    "population_en_desert": 1357780,
-    "population_totale": 68620565,
-    "apl_mediane_france": 3.5,
-    "dept_le_plus_touche": "23",
-    "pct_desert_dept_max": 100.0,
-    "nb_departements": 96,
+    "nb_communes": 34954,
+    "nb_communes_desert": 12862,
+    "pct_communes_desert": 36.8,
+    "population_en_desert": 11407815,
+    "apl_mediane_france": 2.88,
+    "dept_le_plus_touche": "18",
+    "pct_desert_dept_max": 80.8,
+    "nb_departements": 97,
     "sources": [
-      "APL DREES via MCP data.gouv.fr",
-      "INSEE RP2021",
-      "geo.api.gouv.fr",
-      "RPPS DREES via MCP data.gouv.fr"
+      "DREES APL (latest GP workbook)",
+      "INSEE RP2021 commune population",
+      "AMELI demographie-exercices-liberaux",
+      "france-geojson"
     ]
   }
 }

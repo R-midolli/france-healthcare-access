@@ -8,10 +8,14 @@ Stage 1 — raw → staging (clean, type, validate)
 Stage 2 — staging → mart  (join, aggregate, derive business metrics)
 """
 
-import pandas as pd
-from sqlalchemy import text
+from pathlib import Path
 
-from db import get_engine, ensure_schemas
+import pandas as pd
+
+try:
+    from src.db import get_engine, ensure_schemas
+except ImportError:
+    from db import get_engine, ensure_schemas
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -27,6 +31,89 @@ def _find_col(df: pd.DataFrame, keywords: list[str]) -> str | None:
     return None
 
 
+def _normalise_communes_frame(apl_raw: pd.DataFrame, pop_raw: pd.DataFrame) -> pd.DataFrame:
+    """Normalize APL and population data into a consistent commune-level frame."""
+    codgeo_col = _find_col(apl_raw, ["codgeo", "code_commune", "com"])
+    apl_col = _find_col(apl_raw, ["apl_mg", "apl"])
+    dept_col = _find_col(apl_raw, ["dept", "dep"])
+    reg_col = _find_col(apl_raw, ["reg"])
+
+    if not codgeo_col or not apl_col:
+        raise ValueError(
+            f"Cannot identify required APL columns. Found: {apl_raw.columns.tolist()}"
+        )
+
+    apl = apl_raw[
+        [codgeo_col, apl_col]
+        + ([dept_col] if dept_col else [])
+        + ([reg_col] if reg_col else [])
+    ].copy()
+    apl.columns = [
+        "codgeo",
+        "apl_mg",
+        *(["dept"] if dept_col else []),
+        *(["reg"] if reg_col else []),
+    ]
+    apl["codgeo"] = apl["codgeo"].astype(str).str.strip().str.zfill(5)
+    apl["apl_mg"] = pd.to_numeric(
+        apl["apl_mg"].astype(str).str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+    if "dept" in apl.columns:
+        apl["dept"] = apl["dept"].astype(str).str.strip().str.zfill(2)
+    else:
+        apl["dept"] = apl["codgeo"].str[:2]
+    if "reg" in apl.columns:
+        apl["reg"] = apl["reg"].astype(str).str.strip()
+
+    apl = apl.dropna(subset=["codgeo", "apl_mg"])
+    apl = apl[apl["apl_mg"].between(0, 200)]
+    apl = apl.drop_duplicates(subset=["codgeo"])
+
+    codgeo_pop = _find_col(pop_raw, ["codgeo", "com"])
+    pop_col = _find_col(pop_raw, ["ptot", "population", "pop"])
+    if not codgeo_pop or not pop_col:
+        raise ValueError(
+            f"Cannot identify population columns. Found: {pop_raw.columns.tolist()}"
+        )
+
+    pop = pop_raw[[codgeo_pop, pop_col]].copy()
+    pop.columns = ["codgeo", "population"]
+    dept_pop = _find_col(pop_raw, ["dept", "dep"])
+    reg_pop = _find_col(pop_raw, ["reg"])
+    if dept_pop:
+        pop["dept_pop"] = pop_raw[dept_pop]
+    if reg_pop:
+        pop["reg_pop"] = pop_raw[reg_pop]
+    pop["codgeo"] = pop["codgeo"].astype(str).str.strip().str.zfill(5)
+    pop["population"] = pd.to_numeric(pop["population"], errors="coerce")
+    pop = pop.dropna()
+    pop["population"] = pop["population"].astype(int)
+    pop = pop[pop["population"] > 0]
+    agg_spec = {"population": "sum"}
+    if "dept_pop" in pop.columns:
+        pop["dept_pop"] = pop["dept_pop"].astype(str).str.strip().str.upper().str.zfill(2)
+        agg_spec["dept_pop"] = "first"
+    if "reg_pop" in pop.columns:
+        pop["reg_pop"] = pop["reg_pop"].astype(str).str.strip().str.zfill(2)
+        agg_spec["reg_pop"] = "first"
+    pop = pop.groupby("codgeo", as_index=False).agg(agg_spec)
+
+    merged = apl.merge(pop, on="codgeo", how="left")
+    if "dept_pop" in merged.columns:
+        if "dept" in merged.columns:
+            merged["dept"] = merged["dept"].fillna(merged["dept_pop"])
+        else:
+            merged["dept"] = merged["dept_pop"]
+    if "reg_pop" in merged.columns:
+        if "reg" in merged.columns:
+            merged["reg"] = merged["reg"].fillna(merged["reg_pop"])
+        else:
+            merged["reg"] = merged["reg_pop"]
+
+    return merged.drop(columns=["dept_pop", "reg_pop"], errors="ignore")
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # STAGE 1: raw → staging
 # ────────────────────────────────────────────────────────────────────────────
@@ -35,60 +122,7 @@ def _stg_communes(engine) -> pd.DataFrame:
     """raw.apl_by_commune + raw.population_by_commune → staging.stg_communes"""
     apl_raw = pd.read_sql("SELECT * FROM raw.apl_by_commune", engine)
     pop_raw = pd.read_sql("SELECT * FROM raw.population_by_commune", engine)
-
-    # --- APL: identify and normalise key columns ---
-    codgeo_col = _find_col(apl_raw, ["codgeo", "code_commune", "com"])
-    apl_col    = _find_col(apl_raw, ["apl_mg", "apl"])
-    dept_col   = _find_col(apl_raw, ["dept", "dep"])
-    reg_col    = _find_col(apl_raw, ["reg"])
-
-    if not codgeo_col or not apl_col:
-        raise ValueError(
-            f"Cannot identify required APL columns. Found: {apl_raw.columns.tolist()}"
-        )
-
-    apl = apl_raw[[codgeo_col, apl_col]
-                  + ([dept_col] if dept_col else [])
-                  + ([reg_col]  if reg_col  else [])
-                  ].copy()
-    apl.columns = (
-        ["codgeo", "apl_mg"]
-        + (["dept"] if dept_col else [])
-        + (["reg"]  if reg_col  else [])
-    )
-    apl["codgeo"] = apl["codgeo"].astype(str).str.strip().str.zfill(5)
-    apl["apl_mg"] = pd.to_numeric(
-        apl["apl_mg"].astype(str).str.replace(",", "."), errors="coerce"
-    )
-    if "dept" in apl.columns:
-        apl["dept"] = apl["dept"].astype(str).str.strip().str.zfill(2)
-    if "reg" in apl.columns:
-        apl["reg"] = apl["reg"].astype(str).str.strip()
-
-    apl = apl.dropna(subset=["codgeo", "apl_mg"])
-    apl = apl[apl["apl_mg"].between(0, 200)]
-    apl = apl.drop_duplicates(subset=["codgeo"])
-
-    # --- Population: identify and normalise key columns ---
-    codgeo_pop = _find_col(pop_raw, ["codgeo", "com"])
-    pop_col    = _find_col(pop_raw, ["ptot", "population", "pop"])
-
-    if not codgeo_pop or not pop_col:
-        raise ValueError(
-            f"Cannot identify population columns. Found: {pop_raw.columns.tolist()}"
-        )
-
-    pop = pop_raw[[codgeo_pop, pop_col]].copy()
-    pop.columns = ["codgeo", "population"]
-    pop["codgeo"]     = pop["codgeo"].astype(str).str.strip().str.zfill(5)
-    pop["population"] = pd.to_numeric(pop["population"], errors="coerce")
-    pop = pop.dropna()
-    pop["population"] = pop["population"].astype(int)
-    pop = pop[pop["population"] > 0]
-    pop = pop.groupby("codgeo", as_index=False)["population"].sum()
-
-    # Join
-    df = apl.merge(pop, on="codgeo", how="left")
+    df = _normalise_communes_frame(apl_raw, pop_raw)
 
     with engine.begin() as conn:
         df.to_sql("stg_communes", conn, schema="staging", if_exists="replace", index=False)
@@ -137,6 +171,13 @@ APL_CATEGORIES = {
     "well_served":     (4.0,   float("inf")),
 }
 
+LEGACY_APL_CATEGORY_MAP = {
+    "critical_desert": "désert_critique",
+    "under_served": "sous-doté",
+    "adequate": "correct",
+    "well_served": "bien_doté",
+}
+
 
 def _categorise_apl(apl: float) -> str:
     for cat, (lo, hi) in APL_CATEGORIES.items():
@@ -183,6 +224,7 @@ def _mart_dim_departments(engine, communes: pd.DataFrame) -> pd.DataFrame:
     df["doctors_per_10k"] = (
         df["nb_medecins"] / df["total_population"] * 10_000
     ).round(2)
+    df["doctors_per_10k"] = df["doctors_per_10k"].replace([float("inf"), float("-inf")], pd.NA)
 
     df = df.sort_values("pct_desert", ascending=False).reset_index(drop=True)
 
@@ -204,7 +246,7 @@ def run_transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     ensure_schemas(engine)
 
     print("\n  [Stage 1] raw → staging")
-    communes = _stg_communes(engine)
+    _stg_communes(engine)
     _stg_departments(engine)
 
     print("\n  [Stage 2] staging → mart")
@@ -212,3 +254,78 @@ def run_transform() -> tuple[pd.DataFrame, pd.DataFrame]:
     dims = _mart_dim_departments(engine, fact)
 
     return fact, dims
+
+
+def build_communes_enriched(raw_dir: Path, proc_dir: Path) -> pd.DataFrame:
+    """Legacy file-based transform kept for backwards compatibility."""
+    raw_dir = Path(raw_dir)
+    proc_dir = Path(proc_dir)
+    apl_raw = pd.read_csv(raw_dir / "apl_communes.csv", dtype=str)
+    pop_raw = pd.read_csv(raw_dir / "population_communes.csv", dtype=str)
+
+    communes = _normalise_communes_frame(apl_raw, pop_raw)
+    communes["apl_cat"] = communes["apl_mg"].apply(
+        lambda value: LEGACY_APL_CATEGORY_MAP[_categorise_apl(float(value))]
+    )
+    communes["is_desert"] = (communes["apl_mg"] < APL_THRESHOLD).astype(int)
+
+    if len(communes) < 30_000:
+        raise AssertionError("Communes insuficientes")
+
+    proc_dir.mkdir(parents=True, exist_ok=True)
+    communes.to_parquet(proc_dir / "communes_enriched.parquet", index=False)
+    return communes
+
+
+def build_departements_summary(raw_dir: Path, proc_dir: Path) -> pd.DataFrame:
+    """Legacy file-based department summary kept for backwards compatibility."""
+    raw_dir = Path(raw_dir)
+    proc_dir = Path(proc_dir)
+    communes_path = proc_dir / "communes_enriched.parquet"
+    if not communes_path.exists():
+        build_communes_enriched(raw_dir, proc_dir)
+
+    communes = pd.read_parquet(communes_path)
+    summary = (
+        communes.groupby("dept", as_index=False)
+        .agg(
+            nb_communes=("codgeo", "count"),
+            population_totale=("population", "sum"),
+            apl_mediane=("apl_mg", "median"),
+            apl_min=("apl_mg", "min"),
+            apl_max=("apl_mg", "max"),
+            nb_communes_desert=("is_desert", "sum"),
+            nb_desert_critique=("apl_cat", lambda x: (x == "désert_critique").sum()),
+        )
+    )
+    summary["pct_desert"] = (
+        summary["nb_communes_desert"] / summary["nb_communes"] * 100
+    ).round(2)
+
+    rpps_path = raw_dir / "rpps_departements.csv"
+    if rpps_path.exists():
+        rpps_raw = pd.read_csv(rpps_path)
+        dept_col = _find_col(rpps_raw, ["dept", "dep", "code_dep"])
+        med_col = _find_col(rpps_raw, ["gen", "med", "omni"])
+        if dept_col and med_col:
+            docs = rpps_raw[[dept_col, med_col]].copy()
+            docs.columns = ["dept", "nb_medecins"]
+            docs["dept"] = docs["dept"].astype(str).str.strip().str.zfill(2)
+            docs["nb_medecins"] = pd.to_numeric(docs["nb_medecins"], errors="coerce")
+            docs = docs.dropna().drop_duplicates(subset=["dept"])
+            summary = summary.merge(docs, on="dept", how="left")
+
+    if "nb_medecins" not in summary.columns:
+        summary["nb_medecins"] = pd.NA
+
+    summary["med_pour_10k"] = (
+        pd.to_numeric(summary["nb_medecins"], errors="coerce")
+        / summary["population_totale"]
+        * 10_000
+    ).round(2)
+    summary["apl_mediane"] = summary["apl_mediane"].round(3)
+    summary = summary.sort_values("pct_desert", ascending=False).reset_index(drop=True)
+
+    proc_dir.mkdir(parents=True, exist_ok=True)
+    summary.to_parquet(proc_dir / "departements_summary.parquet", index=False)
+    return summary
