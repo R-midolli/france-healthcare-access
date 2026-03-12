@@ -483,39 +483,38 @@ st.markdown("""
   }
   a { color: #93c5fd; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  /* Custom Segmented Control Navigation */
-  .nav-container {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 30px;
-      padding: 4px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      width: fit-content;
+  /* Navigation Buttons Style - Dark & Premium */
+  .stButton > button {
+      width: 100% !important;
+      border-radius: 12px !important;
+      padding: 12px 24px !important;
+      font-weight: 800 !important;
+      font-size: 1rem !important;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.05em !important;
+      background-color: #101a2b !important; /* Dark like the cards */
+      color: #ffffff !important;           /* Pure white text */
+      border: 1px solid #334155 !important;
   }
-  .nav-btn {
-      padding: 10px 24px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid transparent;
-      color: var(--text-muted);
-      background: transparent;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+
+  .stButton > button:hover {
+      background-color: #162338 !important;
+      border-color: #3b82f6 !important;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2) !important;
+      transform: translateY(-1px) !important;
   }
-  .nav-btn:hover {
-      background: rgba(110,168,255,0.1);
-      color: var(--text-primary);
+
+  /* Primary Button (The Active Tab / Highlighted) */
+  button[kind="primary"] {
+      background-color: #1e293b !important; /* Slightly lighter to stand out */
+      color: #ffffff !important;
+      border: 2px solid #3b82f6 !important; /* Vivid blue border for active state */
   }
-  .nav-btn.active {
-      background: var(--accent);
-      color: #08111f;
-      box-shadow: 0 4px 12px rgba(110,168,255,0.3);
+  button[kind="primary"]:hover {
+      background-color: #2563eb !important;
+      border-color: #60a5fa !important;
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4) !important;
   }
 
   /* Hide sidebar toggle menu button strictly */
@@ -897,7 +896,7 @@ depts_raw = depts_raw.merge(
 )
 
 # ── Filter Section (Moved to Main) ───────────────────────────────────────────
-st.markdown("### 🔍 Filtrar dados" if L == "fr" else "### 🔍 Filter data")
+st.markdown("### Filtrar dados" if L == "fr" else "### Filter data")
 filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.8])
 
 with filter_col1:
