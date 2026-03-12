@@ -1457,12 +1457,16 @@ elif active_tab == "compare":
 
 elif active_tab == "focus":
     available_depts = [dept for dept in dept_list if dept in set(df["dept"].dropna().astype(str))] or dept_list
-    dept_sel = st.selectbox(
-        "Département",
-        options=available_depts,
-        index=(available_depts.index(profile_dept) if profile_dept in available_depts else 0),
-        format_func=lambda d: dept_reference.loc[dept_reference["dept"] == d, "dept_label"].iloc[0],
-    )
+    
+    # Use columns to make the selectbox smaller (approx 33% width)
+    sel_col1, sel_col2, sel_col3 = st.columns([1, 1, 1])
+    with sel_col1:
+        dept_sel = st.selectbox(
+            "Département",
+            options=available_depts,
+            index=(available_depts.index(profile_dept) if profile_dept in available_depts else 0),
+            format_func=lambda d: dept_reference.loc[dept_reference["dept"] == d, "dept_label"].iloc[0],
+        )
     row  = departments_live[departments_live["dept"] == dept_sel]
     comm = communes[communes["dept"] == dept_sel]
 
