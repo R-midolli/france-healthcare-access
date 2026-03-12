@@ -483,6 +483,14 @@ st.markdown("""
   }
   a { color: #93c5fd; text-decoration: none; }
   a:hover { text-decoration: underline; }
+  /* Hide sidebar toggle menu button strictly */
+  [data-testid="stSidebarNav"],
+  button[kind="header"] {
+      display: none !important;
+  }
+  section[data-testid="stSidebar"] {
+      display: none !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
