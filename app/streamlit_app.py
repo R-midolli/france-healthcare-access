@@ -483,6 +483,41 @@ st.markdown("""
   }
   a { color: #93c5fd; text-decoration: none; }
   a:hover { text-decoration: underline; }
+  /* Custom Segmented Control Navigation */
+  .nav-container {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 30px;
+      padding: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: fit-content;
+  }
+  .nav-btn {
+      padding: 10px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+  }
+  .nav-btn:hover {
+      background: rgba(110,168,255,0.1);
+      color: var(--text-primary);
+  }
+  .nav-btn.active {
+      background: var(--accent);
+      color: #08111f;
+      box-shadow: 0 4px 12px rgba(110,168,255,0.3);
+  }
+
   /* Hide sidebar toggle menu button strictly */
   [data-testid="stSidebarNav"],
   button[kind="header"] {
@@ -1097,18 +1132,38 @@ with st.expander("Comment lire les métriques" if L == "fr" else "How to read th
 
 st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
-# ── TABS ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([
-    "🧭 Vue d'ensemble" if L == "fr" else "🧭 Overview",
-    "📊 Comparer" if L == "fr" else "📊 Compare",
-    "🎯 Focus département" if L == "fr" else "🎯 Department focus",
-])
+# ── CUSTOM NAVIGATION ────────────────────────────────────────────────────────
+if "current_tab" not in st.session_state:
+    st.session_state.current_tab = "overview"
 
+nav_col1, nav_col2, nav_col3, nav_spacer = st.columns([1, 1.1, 1.4, 3])
+
+with nav_col1:
+    if st.button("🧭 Vue d'ensemble", use_container_width=True, 
+                 type="primary" if st.session_state.current_tab == "overview" else "secondary"):
+        st.session_state.current_tab = "overview"
+        st.rerun()
+
+with nav_col2:
+    if st.button("📊 Comparer", use_container_width=True,
+                 type="primary" if st.session_state.current_tab == "compare" else "secondary"):
+        st.session_state.current_tab = "compare"
+        st.rerun()
+
+with nav_col3:
+    if st.button("🎯 Focus département", use_container_width=True,
+                 type="primary" if st.session_state.current_tab == "focus" else "secondary"):
+        st.session_state.current_tab = "focus"
+        st.rerun()
+
+st.markdown("<div style='margin-bottom:20px'></div>", unsafe_allow_html=True)
+
+active_tab = st.session_state.current_tab
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 1 — OVERVIEW
+# VIEWS
 # ════════════════════════════════════════════════════════════════════════════════
-with tab1:
+if active_tab == "overview":
     geo = load_dept_geojson()
 
     overview_left, overview_right = st.columns([1.7, 1])
@@ -1297,10 +1352,7 @@ with tab1:
         st.plotly_chart(fig_categories, use_container_width=True)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 2 — COMPARISON
-# ════════════════════════════════════════════════════════════════════════════════
-with tab2:
+elif active_tab == "compare":
     compare_controls_left, compare_controls_right = st.columns([1, 1])
     with compare_controls_left:
         metric_label = st.selectbox(
@@ -1404,10 +1456,7 @@ with tab2:
         )
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 3 — DEPARTMENT FOCUS
-# ════════════════════════════════════════════════════════════════════════════════
-with tab3:
+elif active_tab == "focus":
     available_depts = [dept for dept in dept_list if dept in set(df["dept"].dropna().astype(str))] or dept_list
     dept_sel = st.selectbox(
         "Département",
